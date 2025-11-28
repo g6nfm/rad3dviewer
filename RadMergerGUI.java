@@ -10,17 +10,27 @@ public class RadMergerGUI extends JFrame {
     private FileDropPanel filePanel2;
     private FileDropPanel filePanel3;
     private JLabel statusLabel;
-    // Use a JTabbedPane for two tabs: 3D viewer and .rad file editor.
+
     private JTabbedPane tabbedPane;
+    private JComboBox<String> carDropdown;
 
     // Tab 1: 3D Viewer container.
     private JPanel viewerContainer;
     // Tab 2: Panel for editing the .rad file text.
     private JPanel radFilePanel;
     private JTextArea radTextArea;
+    
+    private JComboBox<String> wheelDropdown;
+    private Rad3DViewer wheelViewer;
+    private File wheelsFolder = new File("cars/wheels");
+    private JPanel wheelViewerContainer;
 
-    // We will save/operate on the merged file.
-    private String mergedFilePath = "merged.rad";
+    // Path of the last merged file (null until first merge)
+    private String mergedFilePath = null;
+
+    private Rad3DViewer viewer;
+
+    private File carsFolder = new File("cars");
 
     public RadMergerGUI() {
         setTitle("RAD File Merger & Viewer");
@@ -29,7 +39,72 @@ public class RadMergerGUI extends JFrame {
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(10, 10));
 
-        // Top panel: drag-and-drop file slots.
+
+        // =========================
+        // LEFT SIDE PANEL (Car + Wheel Selectors)
+        // =========================
+        JPanel leftSide = new JPanel();
+        leftSide.setLayout(new BoxLayout(leftSide, BoxLayout.Y_AXIS));
+        leftSide.setPreferredSize(new Dimension(260, 900)); 
+        leftSide.setBorder(BorderFactory.createEmptyBorder(10,10,10,10));
+        add(leftSide, BorderLayout.WEST);
+
+        // =========================
+        // CAR SELECTOR PANEL
+        // =========================
+        JPanel carSelectorPanel = new JPanel();
+        carSelectorPanel.setLayout(new BoxLayout(carSelectorPanel, BoxLayout.Y_AXIS));
+        carSelectorPanel.setBorder(BorderFactory.createTitledBorder("Select Car"));
+
+        carDropdown = new JComboBox<>();
+        carDropdown.setFont(new Font("SansSerif", Font.PLAIN, 15));
+        carDropdown.setMaximumSize(new Dimension(220, 35));
+        carDropdown.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        carSelectorPanel.add(Box.createVerticalStrut(10));
+        carSelectorPanel.add(carDropdown);
+        carSelectorPanel.add(Box.createVerticalStrut(10));
+
+        leftSide.add(carSelectorPanel);
+
+        // =========================
+        // WHEEL SELECTOR PANEL
+        // =========================
+        JPanel wheelPanel = new JPanel();
+        wheelPanel.setLayout(new BoxLayout(wheelPanel, BoxLayout.Y_AXIS));
+        wheelPanel.setBorder(BorderFactory.createTitledBorder("Select Wheel Model"));
+
+        // Dropdown
+        wheelDropdown = new JComboBox<>();
+        wheelDropdown.setFont(new Font("SansSerif", Font.PLAIN, 15));
+        wheelDropdown.setMaximumSize(new Dimension(220, 35));
+        wheelDropdown.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        wheelPanel.add(Box.createVerticalStrut(10));
+        wheelPanel.add(wheelDropdown);
+        wheelPanel.add(Box.createVerticalStrut(10));
+
+        // Mini wheel viewer
+        wheelViewerContainer = new JPanel(new BorderLayout());
+        wheelViewerContainer.setPreferredSize(new Dimension(240, 240));
+        wheelViewerContainer.setMaximumSize(new Dimension(240, 240));
+
+        wheelViewer = new Rad3DViewer();
+        wheelViewerContainer.add(wheelViewer, BorderLayout.CENTER);
+
+        wheelPanel.add(wheelViewerContainer);
+
+        // Add wheel section to left side
+        leftSide.add(Box.createVerticalStrut(20));
+        leftSide.add(wheelPanel);
+
+
+        // Fill dropdown
+        refreshDropdown();
+        refreshWheelDropdown();     // wheels
+
+
+        // --- Top drag-and-drop slots ---
         JPanel dropPanel = new JPanel(new GridLayout(1, 3, 10, 10));
         filePanel1 = new FileDropPanel("Slot 1 (.rad file)", 1);
         filePanel2 = new FileDropPanel("Slot 2 (.rad file)", 2);
@@ -39,24 +114,17 @@ public class RadMergerGUI extends JFrame {
         dropPanel.add(filePanel3);
         add(dropPanel, BorderLayout.NORTH);
 
-        // Create the tabbed pane.
+        // --- Tabs ---
         tabbedPane = new JTabbedPane();
 
-        // Tab 1: Model Viewer.
+        // Tab 1: Model Viewer
         viewerContainer = new JPanel(new BorderLayout());
-        File mergedFile = new File(mergedFilePath);
-        if (mergedFile.exists()) {
-            Rad3DViewer viewer = new Rad3DViewer();
-            viewer.loadRadFile(mergedFilePath);
-            viewerContainer.add(viewer, BorderLayout.CENTER);
-        } else {
-            viewerContainer.add(new JLabel("Merged model will display here.", SwingConstants.CENTER), BorderLayout.CENTER);
-        }
+        viewer = new Rad3DViewer();                // always create one
+        viewerContainer.add(viewer, BorderLayout.CENTER);
         tabbedPane.addTab("Model Viewer", viewerContainer);
 
-        // Tab 2: RAD File Editor.
+        // Tab 2: RAD File Editor
         radFilePanel = new JPanel(new BorderLayout());
-        // Create a toolbar panel at the top for Save, Find, and Replace.
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT));
         JButton btnSave = new JButton("Save");
         JButton btnFind = new JButton("Find");
@@ -65,18 +133,18 @@ public class RadMergerGUI extends JFrame {
         toolbar.add(btnFind);
         toolbar.add(btnReplace);
 
-        // Create the text area with a monospaced, bold font.
         radTextArea = new JTextArea();
         radTextArea.setFont(new Font("Monospaced", Font.BOLD, 16));
         radTextArea.setEditable(true);
         JScrollPane scrollPane = new JScrollPane(radTextArea);
+
         radFilePanel.add(toolbar, BorderLayout.NORTH);
         radFilePanel.add(scrollPane, BorderLayout.CENTER);
         tabbedPane.addTab(".rad File Editor", radFilePanel);
 
         add(tabbedPane, BorderLayout.CENTER);
 
-        // Bottom panel with merge button and status label.
+        // --- Bottom merge + status ---
         JPanel bottomPanel = new JPanel();
         JButton mergeButton = new JButton("Merge");
         mergeButton.addActionListener(e -> onMerge());
@@ -85,17 +153,27 @@ public class RadMergerGUI extends JFrame {
         bottomPanel.add(statusLabel);
         add(bottomPanel, BorderLayout.SOUTH);
 
-        // Button actions for the RAD File Editor toolbar.
+        // --- Toolbar actions ---
         btnSave.addActionListener(e -> {
-            try {
-                // Save the current text in radTextArea to the merged file.
-                try (PrintWriter out = new PrintWriter(new FileWriter(mergedFilePath))) {
-                    out.print(radTextArea.getText());
-                }
-                JOptionPane.showMessageDialog(this, "File saved successfully!", "Save", JOptionPane.INFORMATION_MESSAGE);
-            } catch (IOException ex) {
-                JOptionPane.showMessageDialog(this, "Error saving file: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            if (mergedFilePath == null) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "No merged file yet. Click Merge first.",
+                        "Error",
+                        JOptionPane.ERROR_MESSAGE
+                );
+                return;
             }
+            try (PrintWriter out = new PrintWriter(new FileWriter(mergedFilePath))) {
+                out.print(radTextArea.getText());
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(this,
+                        "Error saving file: " + ex.getMessage(),
+                        "Error",
+                        JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            JOptionPane.showMessageDialog(this, "File saved successfully!", "Save", JOptionPane.INFORMATION_MESSAGE);
         });
 
         btnFind.addActionListener(e -> {
@@ -103,9 +181,7 @@ public class RadMergerGUI extends JFrame {
             if (searchTerm != null && !searchTerm.isEmpty()) {
                 String content = radTextArea.getText();
                 int pos = content.indexOf(searchTerm, radTextArea.getCaretPosition());
-                if (pos == -1) {
-                    pos = content.indexOf(searchTerm);
-                }
+                if (pos == -1) pos = content.indexOf(searchTerm);
                 if (pos != -1) {
                     radTextArea.requestFocus();
                     radTextArea.select(pos, pos + searchTerm.length());
@@ -127,11 +203,6 @@ public class RadMergerGUI extends JFrame {
             }
         });
 
-        // If the merged file exists, load its text.
-        if (mergedFile.exists()) {
-            loadRadFileText(mergedFilePath);
-        }
-
         setVisible(true);
     }
 
@@ -140,32 +211,63 @@ public class RadMergerGUI extends JFrame {
     }
 
     private void onMerge() {
-        // Verify that a file has been dropped into each slot.
+        // Need three files
         if (filePanel1.getFile() == null || filePanel2.getFile() == null || filePanel3.getFile() == null) {
             JOptionPane.showMessageDialog(this, "Please drop a file into each slot.", "Missing File", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
+        // Ask user for output file name
+        String name = JOptionPane.showInputDialog(
+                this,
+                "Enter a name for the merged car file (without .rad):",
+                "Save As",
+                JOptionPane.PLAIN_MESSAGE
+        );
+
+        if (name == null || name.trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Invalid name. Merge cancelled.");
+            return;
+        }
+
+        name = name.trim();
+
+        // Ensure cars/ directory exists
+        File carsDir = new File("cars");
+        if (!carsDir.exists()) {
+            //noinspection ResultOfMethodCallIgnored
+            carsDir.mkdirs();
+        }
+
+        mergedFilePath = "cars/" + name + ".rad";
+
         try {
             mergeFiles(filePanel1.getFile(), filePanel2.getFile(), filePanel3.getFile(), mergedFilePath);
-            statusLabel.setText("Merging complete. Output file: " + mergedFilePath);
-            JOptionPane.showMessageDialog(this, "Merging complete!\nOutput file: " + mergedFilePath, "Success", JOptionPane.INFORMATION_MESSAGE);
 
-            // Update the 3D viewer.
-            Rad3DViewer viewer = new Rad3DViewer();
-            //viewer.loadRadFile(mergedFilePath);
-            viewerContainer.removeAll();
-            viewerContainer.add(viewer, BorderLayout.CENTER);
+            statusLabel.setText("Merging complete. Saved as: " + mergedFilePath);
+            JOptionPane.showMessageDialog(this,
+                    "Merging complete!\nSaved as: " + mergedFilePath,
+                    "Success",
+                    JOptionPane.INFORMATION_MESSAGE);
+
+            // Update 3D viewer
+            
+            viewer.loadRadFile(mergedFilePath);
             viewerContainer.revalidate();
             viewerContainer.repaint();
 
-            // Update the editable text area.
+            // Load into editor
             loadRadFileText(mergedFilePath);
-            // Optionally switch to the RAD File Editor tab:
+            refreshDropdown();
+            refreshWheelDropdown();     // wheels
             tabbedPane.setSelectedIndex(1);
+
         } catch (IOException ex) {
             statusLabel.setText("Error during merge: " + ex.getMessage());
-            JOptionPane.showMessageDialog(this, "Error during merge:\n" + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this,
+                    "Error during merge:\n" + ex.getMessage(),
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -195,9 +297,6 @@ public class RadMergerGUI extends JFrame {
         return line;
     }
 
-    /**
-     * Load the contents of the merged .rad file into the editable text area.
-     */
     private void loadRadFileText(String filePath) {
         try {
             List<String> lines = Files.readAllLines(Paths.get(filePath));
@@ -208,4 +307,89 @@ public class RadMergerGUI extends JFrame {
             radTextArea.setText("Error reading file:\n" + e.getMessage());
         }
     }
+
+    private void refreshDropdown() {
+        carDropdown.removeAllItems();
+        carDropdown.addItem("Select a Car");
+
+        if (!carsFolder.exists()) carsFolder.mkdirs();
+
+        File[] list = carsFolder.listFiles(
+            (d, name) -> name.toLowerCase().endsWith(".rad")
+        );
+
+        if (list != null) {
+            for (File f : list) {
+                carDropdown.addItem(f.getName().replace(".rad", ""));
+            }
+        }
+
+        // Handle selection
+        carDropdown.addActionListener(e -> {
+            Object selected = carDropdown.getSelectedItem();
+            if (selected == null) return;
+
+            String name = selected.toString();
+            if (name.equals("Select a Car")) return;
+
+            File f = new File(carsFolder, name + ".rad");
+            if (!f.exists()) return;
+
+            mergedFilePath = f.getAbsolutePath();
+
+            try {
+                viewer.loadRadFile(mergedFilePath);
+                viewerContainer.revalidate();
+                viewerContainer.repaint();
+
+                loadRadFileText(mergedFilePath);
+                tabbedPane.setSelectedIndex(1);
+
+                statusLabel.setText("Loaded: " + f.getName());
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this,
+                    "Error loading file:\n" + ex.getMessage(),
+                    "Load Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+    }
+
+    private void refreshWheelDropdown() {
+        wheelDropdown.removeAllItems();
+        wheelDropdown.addItem("Select Wheel");
+
+        if (!wheelsFolder.exists()) wheelsFolder.mkdirs();
+
+        File[] wheels = wheelsFolder.listFiles((dir, name) -> name.toLowerCase().endsWith(".rad"));
+        if (wheels == null) return;
+
+        for (File f : wheels) {
+            wheelDropdown.addItem(f.getName().replace(".rad", ""));
+        }
+
+        wheelDropdown.addActionListener(e -> {
+            Object selected = wheelDropdown.getSelectedItem();
+            if (selected == null) return;
+
+            String wheelName = selected.toString();
+            if (wheelName.equals("Select Wheel")) return;
+
+            File wfile = new File(wheelsFolder, wheelName + ".rad");
+            if (!wfile.exists()) return;
+
+            try {
+                wheelViewer.loadRadFile(wfile.getAbsolutePath());
+                wheelViewerContainer.revalidate();
+                wheelViewerContainer.repaint();
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this,
+                        "Error loading wheel:\n" + ex.getMessage(),
+                        "Load Error",
+                        JOptionPane.ERROR_MESSAGE);
+            }
+        });
+    }
+
+
+
 }

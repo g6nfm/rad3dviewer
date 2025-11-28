@@ -31,30 +31,25 @@ public class ContO {
     public int wxz = 0;
     public int wzy = 0;
     public int maxR = 0;
-    private int disp = 0;
     private int disline = 7;
     private boolean shadow = false;
     private boolean noline = false;
     public int grat = 0;
+
     public final int[] keyx = new int[8];
     public final int[] keyz = new int[8];
+
     boolean[] isCustomWheel = new boolean[8];
-    public int wheel0StartIndex = -1;
-    public int wheel0PolyCount = 0;
-    public final int[] sx = new int[4];
-    public final int[] sy = new int[4];
-    public final int[] sz = new int[4];
-    public final int[] stg = new int[8];
-    public final int[] dov = new int[4];
-    public final float[] smag = new float[4];
-    public final int[] scx = new int[4];
-    public final int[] scz = new int[4];
-    public final boolean[] fulls = new boolean[4];
-    public boolean elec = false;
-    public boolean roted = false;
-    public boolean fix = false;
-    public int fcnt = 0;
-    public int checkpoint = 0;
+
+    SimpleColor pendingRim0, pendingRim1, pendingRim2;
+
+    public SimpleColor[] wheelRimColorOriginal = new SimpleColor[8];
+    public SimpleColor[] wheelRimColor1 = new SimpleColor[8];
+    public SimpleColor[] wheelRimColor2 = new SimpleColor[8];
+    
+    public int wheelCount = 0;
+
+    
 
     Wheels wheels = new Wheels();
 
@@ -400,21 +395,61 @@ public class ContO {
                     flag = false;
                     continue;
                 }
+                // ---- rims for next wheels (per-axle pending colours) ----
                 if (line.startsWith("rims(")) {
-                    //original.add(new SimpleColor (Utility.getint("rims", line, 0), Utility.getint("rims", line, 1),
-                            //Utility.getint("rims", line, 2)));
-                    wheels.setrims(Utility.getint("rims", line, 0), Utility.getint("rims", line, 1),
-                            Utility.getint("rims", line, 2), Utility.getint("rims", line, 3),
-                            Utility.getint("rims", line, 4));
+                    pendingRim0 = new SimpleColor(
+                            Utility.getint("rims", line, 0),
+                            Utility.getint("rims", line, 1),
+                            Utility.getint("rims", line, 2)
+                    );
+
+                    // reset scheme-specific overrides for this axle
+                    pendingRim1 = null;
+                    pendingRim2 = null;
+
+                    wheels.setrims(
+                            Utility.getint("rims", line, 0),
+                            Utility.getint("rims", line, 1),
+                            Utility.getint("rims", line, 2),
+                            Utility.getint("rims", line, 3),
+                            Utility.getint("rims", line, 4)
+                    );
+                    continue;
                 }
+
                 if (line.startsWith("rims1(")) {
-                    //skin1.add(new SimpleColor (Utility.getint("rims1", line, 0), Utility.getint("rims1", line, 1),
-                            //Utility.getint("rims1", line, 2)));
+                    pendingRim1 = new SimpleColor(
+                            Utility.getint("rims1", line, 0),
+                            Utility.getint("rims1", line, 1),
+                            Utility.getint("rims1", line, 2)
+                    );
+                    continue;
                 }
+
                 if (line.startsWith("rims2(")) {
-                    //skin2.add(new SimpleColor (Utility.getint("rims2", line, 0), Utility.getint("rims2", line, 1),
-                            //Utility.getint("rims2", line, 2)));
+                    pendingRim2 = new SimpleColor(
+                            Utility.getint("rims2", line, 0),
+                            Utility.getint("rims2", line, 1),
+                            Utility.getint("rims2", line, 2)
+                    );
+                    continue;
                 }
+
+
+                if (line.startsWith("rims2(")) {
+                    SimpleColor sc2 = new SimpleColor(
+                        Utility.getint("rims2", line, 0),
+                        Utility.getint("rims2", line, 1),
+                        Utility.getint("rims2", line, 2)
+                    );
+
+                    if (wheelCount < 8)
+                        wheelRimColor2[wheelCount] = sc2;
+
+                    continue;
+                }
+
+
                 // -------- STEP 6: Wheel anchors + model instancing --------
                 if (line.startsWith("w(") && j < 8) {
                     int wxv = (int)(Utility.getint("w", line, 0) * div * nfmm_scale[0]);
@@ -444,6 +479,20 @@ public class ContO {
                     wx[j] = wxv;
                     wy[j] = wyv;
                     wz[j] = wzv;
+
+                    // Assign rim colours for this wheel from the current axle colours
+                    if (wheelCount < 8) {
+                        SimpleColor base = pendingRim0;
+                        if (base != null) {
+                            wheelRimColorOriginal[wheelCount] = base;
+
+                            // for skin1/skin2: if not specified, fall back to base colour
+                            wheelRimColor1[wheelCount] = (pendingRim1 != null) ? pendingRim1 : base;
+                            wheelRimColor2[wheelCount] = (pendingRim2 != null) ? pendingRim2 : base;
+                        }
+                    }
+
+
                     List<TempPoly> model = wheelModels.get(modelID);
                     // ALWAYS run wheels.make() BUT DO NOT USE ITS POLYGONS.
                     int oldNpl = npl;
@@ -462,6 +511,7 @@ public class ContO {
                         npl += 15;
                     }
                     j++;
+                    wheelCount = j;   // <--- number of wheels parsed
                     continue;
                 }
                 if (line.startsWith("shadow")) {
@@ -494,8 +544,6 @@ public class ContO {
             e.printStackTrace();
         }
 
-
-
         skinMap.put(0, original);
         skinMap.put(1, skin1);
 
@@ -507,6 +555,88 @@ public class ContO {
 
 
     }
+
+    public void applySkin(int skinIndex) {
+
+        ArrayList<SimpleColor> colors = skinMap.get(skinIndex);
+        if (colors == null || colors.isEmpty()) return;
+
+        final int STOCK_WHEEL_POLYS = 15;
+        final int RIM_START_INDEX = 1;  
+        final int RIM_END_INDEX   = 7; 
+
+        int numWheels = wheelCount;
+        boolean hasCustom = false;
+
+        for (int i = 0; i < numWheels; i++) {
+            if (isCustomWheel[i]) {
+                hasCustom = true;
+                break;
+            }
+        }
+
+        // ---------------- BODY ----------------
+        int bodyPolyCount = hasCustom
+                ? npl
+                : npl - (numWheels * STOCK_WHEEL_POLYS);
+
+        int idx = 0;
+        for (int pi = 0; pi < bodyPolyCount; pi++) {
+            Plane pl = p[pi];
+            if (pl.glass) continue;
+            if (idx >= colors.size()) break;
+
+            SimpleColor c = colors.get(idx++);
+            pl.c[0] = c.r; pl.c[1] = c.g; pl.c[2] = c.b;
+            pl.oc[0] = c.r; pl.oc[1] = c.g; pl.oc[2] = c.b;
+
+            float[] h = Color.RGBtoHSB(c.r, c.g, c.b, null);
+            pl.hsb[0] = h[0]; pl.hsb[1] = h[1]; pl.hsb[2] = h[2];
+        }
+
+        // ---------------- RIMS ----------------
+        if (!hasCustom && numWheels > 0) {
+
+            int baseWheelStart = npl - (numWheels * STOCK_WHEEL_POLYS);
+
+            for (int w = 0; w < numWheels; w++) {
+
+                SimpleColor rc;
+                switch (skinIndex) {
+                    case 1:
+                        rc = wheelRimColor1[w] != null
+                                ? wheelRimColor1[w]
+                                : wheelRimColorOriginal[w];
+                        break;
+                    case 2:
+                        rc = wheelRimColor2[w] != null
+                                ? wheelRimColor2[w]
+                                : wheelRimColorOriginal[w];
+                        break;
+                    default: // 0 or anything else
+                        rc = wheelRimColorOriginal[w];
+                }
+
+                if (rc == null) continue;
+
+                int blockStart = baseWheelStart + w * STOCK_WHEEL_POLYS;
+                int start      = blockStart + RIM_START_INDEX;
+                int end        = blockStart + RIM_END_INDEX;
+
+                for (int pi = start; pi < end; pi++) {
+                    Plane pl = p[pi];
+
+                    pl.c[0] = rc.r; pl.c[1] = rc.g; pl.c[2] = rc.b;
+                    pl.oc[0] = rc.r; pl.oc[1] = rc.g; pl.oc[2] = rc.b;
+
+                    float[] h = Color.RGBtoHSB(rc.r, rc.g, rc.b, null);
+                    pl.hsb[0] = h[0]; pl.hsb[1] = h[1]; pl.hsb[2] = h[2];
+                }
+            }
+        }
+    }
+
+
 
 
     public void d(Graphics2D rd) {
@@ -521,7 +651,7 @@ public class ContO {
       
 
         if (Utility.cXs(i + maxR * 2, k) > 0 && Utility.cXs(i - maxR * 2, k) < Medium.w && k > -maxR
-                && (k < Medium.fade[disline] + maxR || Medium.trk) && (l > disp || Medium.trk)) {
+                && (k < Medium.fade[disline] + maxR || Medium.trk)) {
             //SHADOW
             if (shadow) {
                 if (!Medium.crs) {
@@ -565,9 +695,7 @@ public class ContO {
             int j1 = Medium.cy + (int) ((y - Medium.y - Medium.cy) * RadicalMath.cos(Medium.zy) - (j - Medium.cz) * RadicalMath.sin(Medium.zy));
             if (Utility.cYs(j1 + maxR, k) > 0 && Utility.cYs(j1 - maxR, k) < Medium.h) {
                 
-                if (checkpoint != 0 && checkpoint - 1 == Medium.checkpoint) {
-                    l = -1;
-                }
+                
                 int ai[] = new int[npl];
                 int ai1[] = new int[npl];
                 int i3 = 0;

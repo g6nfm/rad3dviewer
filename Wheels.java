@@ -5,6 +5,9 @@ public class Wheels {
     int rc[] = {70, 70, 70};
     float size;
     float depth;
+    public SimpleColor rimColorOriginal;
+    public SimpleColor rimColor1;
+    public SimpleColor rimColor2;
  
     public Wheels() {
         size = 2.0F;

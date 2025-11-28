@@ -11,6 +11,7 @@ public class Rad3DViewer extends JPanel
 
     private ContO model;
     private Medium medium;
+    
 
     // This angle (in degrees) controls the rotation of the model around its Y-axis.
     private double modelAngle = 0;
@@ -72,16 +73,16 @@ public class Rad3DViewer extends JPanel
         try {
             byte[] fileData = Files.readAllBytes(Paths.get(filePath));
             model = new ContO(fileData, medium);
-            model.x = Medium.cx;
+            model.x = medium.cx;
             model.y = 250 - model.grat;
             model.z = 650;
             model.zy = 0;
             model.xz = 0;
-            Medium.crs = true;
-            Medium.ground = 650;
-            Medium.fogd = 8;
-            Medium.fadeFrom(2000);
-            Medium.y = -300;
+            medium.crs = true;
+            medium.ground = 650;
+            medium.fogd = 8;
+            medium.fadeFrom(2000);
+            medium.y = -300;
         } catch (IOException ex) {
             ex.printStackTrace();
         }
@@ -92,7 +93,7 @@ public class Rad3DViewer extends JPanel
 
         public DrawingPanel() { setPreferredSize(new Dimension(1024, 768)); }
 
-        @Override
+                @Override
         protected void paintComponent(Graphics g) {
             super.paintComponent(g);
             if (model == null) {
@@ -106,22 +107,21 @@ public class Rad3DViewer extends JPanel
             int pw = getWidth();
             int ph = getHeight();
 
-            // Tell Medium to match this panel
-            Medium.setViewport(0, 0, pw, ph);
+            // Tell medium to match this panel
+            medium.setViewport(0, 0, pw, ph);
 
             // Keep the car horizontally centered on the screen
-            model.x = Medium.cx;
+            model.x = medium.cx;
 
             g2d.setColor(Color.WHITE);
             g2d.fillRect(0, 0, pw, ph);
 
-            Medium.w = getWidth();
-            Medium.h = getHeight();
-            Medium.cx = Medium.w / 2;
-            Medium.cy = Medium.h / 2;
-            Medium.cz = Medium.h / 2;
-            Medium.d(g2d);
-            
+            medium.w = getWidth();
+            medium.h = getHeight();
+            medium.cx = medium.w / 2;
+            medium.cy = medium.h / 2;
+            medium.cz = medium.h / 2;
+            medium.d(g2d);
 
             int nPlanes = model.npl;
 
@@ -135,43 +135,8 @@ public class Rad3DViewer extends JPanel
                 backupOz[i] = p.oz.clone();
             }
 
-            
-
-            // =============================================
-            // ⬇️ APPLY SKINS BASED ON colorScheme
-            // =============================================
-
-            ArrayList<SimpleColor> colorList = model.skinMap.get(colorScheme);
-
-
-            if (colorList != null) {
-                int index = 0;
-                for (int i = 0; i < nPlanes; i++) {
-                    Plane p = model.p[i];
-
-                    if (p.glass) continue;  // skip glass polys
-                    
-
-                    if (index < colorList.size()) {
-                        SimpleColor sc = colorList.get(index);
-
-                        p.c[0] = sc.r;
-                        p.c[1] = sc.g;
-                        p.c[2] = sc.b;
-
-                        p.oc[0] = sc.r;
-                        p.oc[1] = sc.g;
-                        p.oc[2] = sc.b;
-
-                        float[] h = Color.RGBtoHSB(sc.r, sc.g, sc.b, null);
-                        p.hsb[0] = h[0];
-                        p.hsb[1] = h[1];
-                        p.hsb[2] = h[2];
-                    }
-
-                    index++;
-                }
-            }
+            // BEFORE rotation and rendering
+            model.applySkin(colorScheme);
 
             // =============================================
             // Center + rotation
@@ -196,15 +161,14 @@ public class Rad3DViewer extends JPanel
             for (int i = 0; i < nPlanes; i++) {
                 Plane p = model.p[i];
                 for (int v = 0; v < p.n; v++) {
-
                     int ox = p.ox[v];
                     int oz = p.oz[v];
 
                     int rx = ox - centerX;
                     int rz = oz - centerZ;
 
-                    p.ox[v] = centerX + (int)(rx * cosA - rz * sinA);
-                    p.oz[v] = centerZ + (int)(rx * sinA + rz * cosA);
+                    p.ox[v] = centerX + (int) (rx * cosA - rz * sinA);
+                    p.oz[v] = centerZ + (int) (rx * sinA + rz * cosA);
                 }
             }
 
@@ -215,7 +179,6 @@ public class Rad3DViewer extends JPanel
                 Plane p = model.p[i];
                 System.arraycopy(backupOx[i], 0, p.ox, 0, p.ox.length);
                 System.arraycopy(backupOz[i], 0, p.oz, 0, p.oz.length);
-
             }
         }
     }
