@@ -90,6 +90,7 @@ public class RadMergerGUI extends JFrame {
         wheelViewerContainer.setMaximumSize(new Dimension(240, 240));
 
         wheelViewer = new Rad3DViewer();
+        wheelViewer.setWheelViewer(true); 
         wheelViewerContainer.add(wheelViewer, BorderLayout.CENTER);
 
         wheelPanel.add(wheelViewerContainer);
@@ -307,6 +308,7 @@ public class RadMergerGUI extends JFrame {
             radTextArea.setText("Error reading file:\n" + e.getMessage());
         }
     }
+    
 
     private void refreshDropdown() {
         carDropdown.removeAllItems();
@@ -378,7 +380,7 @@ public class RadMergerGUI extends JFrame {
             if (!wfile.exists()) return;
 
             try {
-                wheelViewer.loadRadFile(wfile.getAbsolutePath());
+                wheelViewer.loadWheelFile(wfile.getAbsolutePath());   // NEW dedicated wheel loader
                 wheelViewerContainer.revalidate();
                 wheelViewerContainer.repaint();
             } catch (Exception ex) {
