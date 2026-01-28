@@ -381,6 +381,12 @@ public class Rad3DViewer extends JPanel
                 break;
         }
     }
+
+    public void setColorScheme(int scheme) {
+        this.colorScheme = scheme;
+        repaint();
+    }
+    
     @Override public void keyReleased(KeyEvent e) {}
     @Override public void keyTyped(KeyEvent e) {}
 

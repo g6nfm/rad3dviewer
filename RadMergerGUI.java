@@ -31,6 +31,7 @@ public class RadMergerGUI extends JFrame {
     private Rad3DViewer viewer;
 
     private WheelAnchorEditor wheelAnchorEditor;
+    private ColorPaletteEditor colorPaletteEditor;
 
     private File carsFolder = new File("cars");
 
@@ -69,6 +70,14 @@ public class RadMergerGUI extends JFrame {
         createCarBtn.setMaximumSize(new Dimension(220, 35));
         createCarBtn.addActionListener(e -> createNewCar());
         carSelectorPanel.add(createCarBtn);
+        carSelectorPanel.add(Box.createVerticalStrut(5));
+
+        // ADD THIS:
+        JButton importCarBtn = new JButton("Import Car Code");
+        importCarBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        importCarBtn.setMaximumSize(new Dimension(220, 35));
+        importCarBtn.addActionListener(e -> importCarCode());
+        carSelectorPanel.add(importCarBtn);
         carSelectorPanel.add(Box.createVerticalStrut(5));
 
         JButton deleteCarBtn = new JButton("Delete Car");
@@ -135,6 +144,46 @@ public class RadMergerGUI extends JFrame {
         leftSide.add(Box.createVerticalStrut(20));
         leftSide.add(wheelPanel);
 
+        // =========================
+        // COLOR SCHEME PANEL
+        // =========================
+        JPanel colorSchemePanel = new JPanel();
+        colorSchemePanel.setLayout(new BoxLayout(colorSchemePanel, BoxLayout.Y_AXIS));
+        colorSchemePanel.setBorder(BorderFactory.createTitledBorder("Color Schemes"));
+
+        JButton originalBtn = new JButton("Original");
+        originalBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        originalBtn.setMaximumSize(new Dimension(220, 35));
+        originalBtn.addActionListener(e -> {
+            viewer.setColorScheme(0);
+        });
+
+        JButton scheme1Btn = new JButton("Color Scheme 1");
+        scheme1Btn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        scheme1Btn.setMaximumSize(new Dimension(220, 35));
+        scheme1Btn.addActionListener(e -> {
+            viewer.setColorScheme(1);
+        });
+
+        JButton scheme2Btn = new JButton("Color Scheme 2");
+        scheme2Btn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        scheme2Btn.setMaximumSize(new Dimension(220, 35));
+        scheme2Btn.addActionListener(e -> {
+            viewer.setColorScheme(2);
+        });
+
+        colorSchemePanel.add(Box.createVerticalStrut(10));
+        colorSchemePanel.add(originalBtn);
+        colorSchemePanel.add(Box.createVerticalStrut(5));
+        colorSchemePanel.add(scheme1Btn);
+        colorSchemePanel.add(Box.createVerticalStrut(5));
+        colorSchemePanel.add(scheme2Btn);
+        colorSchemePanel.add(Box.createVerticalStrut(10));
+
+        leftSide.add(Box.createVerticalStrut(20));
+        leftSide.add(colorSchemePanel);
+        
+
 
         // Fill dropdown
         refreshDropdown();
@@ -161,31 +210,56 @@ public class RadMergerGUI extends JFrame {
         // Create the wheel anchor editor overlay
         wheelAnchorEditor = new WheelAnchorEditor(viewer);
 
+        // Create the color palette editor overlay
+        colorPaletteEditor = new ColorPaletteEditor(viewer);
+
         // Layer them using JLayeredPane
         JLayeredPane layeredPane = new JLayeredPane();
         layeredPane.setPreferredSize(new Dimension(1024, 768));
 
         viewer.setBounds(0, 0, 1024, 768);
         wheelAnchorEditor.setBounds(0, 0, 1024, 768);
+        colorPaletteEditor.setBounds(0, 0, 1024, 768);
 
         layeredPane.add(viewer, JLayeredPane.DEFAULT_LAYER);
         layeredPane.add(wheelAnchorEditor, JLayeredPane.PALETTE_LAYER);
+        layeredPane.add(colorPaletteEditor, JLayeredPane.PALETTE_LAYER);
 
         viewerContainer.add(layeredPane, BorderLayout.CENTER);
 
-        // Add button to toggle editor
-        JButton toggleEditorBtn = new JButton("Edit Wheel Anchors");
-        toggleEditorBtn.addActionListener(e -> {
+        // Add buttons to toggle editors
+        JButton toggleWheelEditorBtn = new JButton("Edit Wheel Anchors");
+        toggleWheelEditorBtn.addActionListener(e -> {
             if (viewer.getCarModel() != null) {
                 wheelAnchorEditor.loadCarModel(viewer.getCarModel(), radTextArea.getText());
                 wheelAnchorEditor.setVisible(!wheelAnchorEditor.isVisible());
+                // Hide color editor when showing wheel editor
+                if (wheelAnchorEditor.isVisible()) {
+                    colorPaletteEditor.setVisible(false);
+                }
+            } else {
+                JOptionPane.showMessageDialog(this, "Load a car first!", "No Car", JOptionPane.WARNING_MESSAGE);
+            }
+        });
+
+        // ADD THIS BUTTON:
+        JButton toggleColorEditorBtn = new JButton("Edit Colors");
+        toggleColorEditorBtn.addActionListener(e -> {
+            if (mergedFilePath != null) {
+                colorPaletteEditor.loadCarColors(radTextArea.getText());
+                colorPaletteEditor.setVisible(!colorPaletteEditor.isVisible());
+                // Hide wheel editor when showing color editor
+                if (colorPaletteEditor.isVisible()) {
+                    wheelAnchorEditor.setVisible(false);
+                }
             } else {
                 JOptionPane.showMessageDialog(this, "Load a car first!", "No Car", JOptionPane.WARNING_MESSAGE);
             }
         });
 
         JPanel viewerToolbar = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        viewerToolbar.add(toggleEditorBtn);
+        viewerToolbar.add(toggleWheelEditorBtn);
+        viewerToolbar.add(toggleColorEditorBtn); // ADD THIS
         viewerContainer.add(viewerToolbar, BorderLayout.SOUTH);
 
         tabbedPane.addTab("Model Viewer", viewerContainer);
@@ -286,8 +360,10 @@ public class RadMergerGUI extends JFrame {
     public static void main(String[] args) {
         SwingUtilities.invokeLater(RadMergerGUI::new);
     }
-
     
+    public Rad3DViewer getViewer() {
+        return viewer;
+    }
 
     private void onMerge() {
         // Need three files
@@ -545,10 +621,7 @@ public class RadMergerGUI extends JFrame {
     }
 
     private String extractWheelModel(String content) {
-        // Wheel files are regular .rad files, so we need to:
-        // 1. Extract all <p>...</p> blocks
-        // 2. Convert them to [p]...[/p]
-        // 3. Wrap in <wheelModel(0)>...</wheelModel>
+        // Create wheel model and auto-generate c1() and c2() for each polygon
         
         StringBuilder wheelModel = new StringBuilder();
         wheelModel.append("<wheelModel(0)>\n\n");
@@ -564,12 +637,15 @@ public class RadMergerGUI extends JFrame {
             int pEnd = content.indexOf("</p>", pStart);
             if (pEnd == -1) break;
             
-            // Extract the polygon block including the tags
+            // Extract the polygon block
             String polygonBlock = content.substring(pStart, pEnd + "</p>".length());
             
             // Convert <p> to [p] and </p> to [/p]
             polygonBlock = polygonBlock.replace("<p>", "[p]");
             polygonBlock = polygonBlock.replace("</p>", "[/p]");
+            
+            // Add c1() and c2() if they don't exist
+            polygonBlock = addColorSchemesToPolygon(polygonBlock);
             
             // Add to wheel model
             wheelModel.append(polygonBlock).append("\n\n");
@@ -581,10 +657,40 @@ public class RadMergerGUI extends JFrame {
         wheelModel.append("</wheelModel>");
         
         if (!foundAnyPolygon) {
-            return null; // No polygons found
+            return null;
         }
         
         return wheelModel.toString();
+    }
+
+    private String addColorSchemesToPolygon(String polygonBlock) {
+        // Add c1() and c2() after c() if they don't exist
+        String[] lines = polygonBlock.split("\n");
+        StringBuilder result = new StringBuilder();
+        
+        for (String line : lines) {
+            String trimmed = line.trim();
+            
+            // Found c() color definition
+            if (trimmed.startsWith("c(") && !trimmed.startsWith("c1(") && !trimmed.startsWith("c2(")) {
+                result.append(line).append("\n");
+                
+                // Add c1() and c2() with same color
+                String c1Line = trimmed.replace("c(", "c1(");
+                String c2Line = trimmed.replace("c(", "c2(");
+                
+                // Preserve indentation
+                String indent = line.substring(0, line.indexOf('c'));
+                result.append(indent).append(c1Line).append("\n");
+                result.append(indent).append(c2Line).append("\n");
+                
+                continue;
+            }
+            
+            result.append(line).append("\n");
+        }
+        
+        return result.toString();
     }
 
     private String removeAllWheelModels(String content) {
@@ -927,6 +1033,146 @@ public class RadMergerGUI extends JFrame {
         }
     }
 
+    private void importCarCode() {
+        // Ask for car name
+        String carName = JOptionPane.showInputDialog(
+            this,
+            "Enter name for the imported car (without .rad):",
+            "Import Car Code",
+            JOptionPane.PLAIN_MESSAGE
+        );
+        
+        if (carName == null || carName.trim().isEmpty()) {
+            return;
+        }
+        
+        carName = carName.trim();
+        File newCarFile = new File(carsFolder, carName + ".rad");
+        
+        // Check if file already exists
+        if (newCarFile.exists()) {
+            int result = JOptionPane.showConfirmDialog(
+                this,
+                "A car with this name already exists. Overwrite?",
+                "File Exists",
+                JOptionPane.YES_NO_OPTION
+            );
+            if (result != JOptionPane.YES_OPTION) return;
+        }
+        
+        // Ask if this is for NFM G6 (auto-generate color schemes)
+        int nfmG6 = JOptionPane.showConfirmDialog(
+            this,
+            "Is this car for NFM G6?\n(This will auto-generate c1() and c2() color schemes for all polygons)",
+            "NFM G6 Support",
+            JOptionPane.YES_NO_OPTION
+        );
+        
+        boolean generateColorSchemes = (nfmG6 == JOptionPane.YES_OPTION);
+        
+        // Show text area for pasting code
+        JTextArea importArea = new JTextArea(20, 50);
+        importArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        JScrollPane scrollPane = new JScrollPane(importArea);
+        
+        int result = JOptionPane.showConfirmDialog(
+            this,
+            scrollPane,
+            "Paste car code here:",
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.PLAIN_MESSAGE
+        );
+        
+        if (result != JOptionPane.OK_OPTION) return;
+        
+        String carCode = importArea.getText().trim();
+        
+        if (carCode.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No code was pasted!", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        
+        // Process the code to add c1() and c2() if needed
+        if (generateColorSchemes) {
+            carCode = addColorSchemes(carCode);
+        }
+        
+        try {
+            Files.write(newCarFile.toPath(), carCode.getBytes());
+            
+            JOptionPane.showMessageDialog(
+                this,
+                "Car imported successfully: " + carName + ".rad" + 
+                (generateColorSchemes ? "\nWith color schemes auto-generated!" : ""),
+                "Success",
+                JOptionPane.INFORMATION_MESSAGE
+            );
+            
+            // Refresh dropdown and select the new car
+            refreshDropdown();
+            carDropdown.setSelectedItem(carName);
+            
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Error importing car:\n" + ex.getMessage(),
+                "Error",
+                JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }
+
+    private String addColorSchemes(String carCode) {
+        // Add c1() and c2() tags to all polygons that only have c()
+        String[] lines = carCode.split("\n");
+        StringBuilder result = new StringBuilder();
+        
+        boolean inPoly = false;
+        String lastCColor = null;
+        
+        for (String line : lines) {
+            String trimmed = line.trim();
+            
+            if (trimmed.startsWith("<p>")) {
+                inPoly = true;
+                lastCColor = null;
+            }
+            
+            if (inPoly) {
+                // Found c() color definition
+                if (trimmed.startsWith("c(")) {
+                    lastCColor = trimmed;
+                    result.append(line).append("\n");
+                    
+                    // Check if next lines already have c1() or c2()
+                    // For now, we'll add them right after c()
+                    String c1Line = lastCColor.replace("c(", "c1(");
+                    String c2Line = lastCColor.replace("c(", "c2(");
+                    
+                    // Add with same indentation as c() line
+                    String indent = line.substring(0, line.indexOf('c'));
+                    result.append(indent).append(c1Line).append("\n");
+                    result.append(indent).append(c2Line).append("\n");
+                    
+                    continue;
+                }
+                
+                // Skip existing c1() and c2() lines to avoid duplicates
+                if (trimmed.startsWith("c1(") || trimmed.startsWith("c2(")) {
+                    continue;
+                }
+            }
+            
+            if (trimmed.startsWith("</p>")) {
+                inPoly = false;
+            }
+            
+            result.append(line).append("\n");
+        }
+        
+        return result.toString();
+    }
+
     public void updateWheelAnchorsInFile() {
         if (mergedFilePath == null) {
             JOptionPane.showMessageDialog(this, 
@@ -1027,5 +1273,231 @@ public class RadMergerGUI extends JFrame {
             ex.printStackTrace();
         }
     }
+    
+    public void saveColorsToFile(Color color1, Color color2, Color color3, Color color4, Color color5, Color color6) {
+        if (mergedFilePath == null) {
+            JOptionPane.showMessageDialog(this, "No file loaded.", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        
+        try {
+            String content = radTextArea.getText();
+            String[] lines = content.split("\n");
+            StringBuilder result = new StringBuilder();
+            
+            // Find OLD color values
+            Color old1st = null, old2nd = null, old3rd = null, old4th = null, old5th = null, old6th = null;
+            
+            for (String line : lines) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("1stColor(")) old1st = parseColorFromLine(trimmed);
+                else if (trimmed.startsWith("2ndColor(")) old2nd = parseColorFromLine(trimmed);
+                else if (trimmed.startsWith("3rdColor(")) old3rd = parseColorFromLine(trimmed);
+                else if (trimmed.startsWith("4thColor(")) old4th = parseColorFromLine(trimmed);
+                else if (trimmed.startsWith("5thColor(")) old5th = parseColorFromLine(trimmed);
+                else if (trimmed.startsWith("6thColor(")) old6th = parseColorFromLine(trimmed);
+            }
+            
+            // Get current scheme from color editor
+            int currentScheme = colorPaletteEditor.getCurrentScheme();
+            
+            // Process all lines
+            for (String line : lines) {
+                String trimmed = line.trim();
+                
+                // Update color definitions
+                if (trimmed.startsWith("1stColor(")) {
+                    result.append(formatColorLine(line, "1stColor", color1));
+                    continue;
+                }
+                if (trimmed.startsWith("2ndColor(")) {
+                    result.append(formatColorLine(line, "2ndColor", color2));
+                    continue;
+                }
+                if (trimmed.startsWith("3rdColor(")) {
+                    result.append(formatColorLine(line, "3rdColor", color3));
+                    continue;
+                }
+                if (trimmed.startsWith("4thColor(")) {
+                    result.append(formatColorLine(line, "4thColor", color4));
+                    continue;
+                }
+                if (trimmed.startsWith("5thColor(")) {
+                    result.append(formatColorLine(line, "5thColor", color5));
+                    continue;
+                }
+                if (trimmed.startsWith("6thColor(")) {
+                    result.append(formatColorLine(line, "6thColor", color6));
+                    continue;
+                }
+                
+                // Update ONLY the tags for the current scheme
+                if (currentScheme == 0) {
+                    // Original scheme - only update c() tags
+                    if (trimmed.startsWith("c(")) {
+                        Color current = parseColorFromLine(trimmed);
+                        Color newColor = null;
+                        
+                        if (old1st != null && colorsMatch(current, old1st)) {
+                            newColor = color1;
+                        } else if (old2nd != null && colorsMatch(current, old2nd)) {
+                            newColor = color2;
+                        }
+                        
+                        if (newColor != null) {
+                            String indent = line.substring(0, line.indexOf('c'));
+                            result.append(indent).append(String.format("c(%d,%d,%d)\n", 
+                                newColor.getRed(), newColor.getGreen(), newColor.getBlue()));
+                        } else {
+                            result.append(line).append("\n");
+                        }
+                        continue;
+                    }
+                } else if (currentScheme == 1) {
+                    // Scheme 1 - only update c1() tags
+                    if (trimmed.startsWith("c1(")) {
+                        Color current = parseColorFromLine(trimmed);
+                        Color newColor = null;
+                        
+                        if (old3rd != null && colorsMatch(current, old3rd)) {
+                            newColor = color3;
+                        } else if (old4th != null && colorsMatch(current, old4th)) {
+                            newColor = color4;
+                        }
+                        
+                        if (newColor != null) {
+                            String indent = line.substring(0, line.indexOf('c'));
+                            result.append(indent).append(String.format("c1(%d,%d,%d)\n", 
+                                newColor.getRed(), newColor.getGreen(), newColor.getBlue()));
+                        } else {
+                            result.append(line).append("\n");
+                        }
+                        continue;
+                    }
+                } else if (currentScheme == 2) {
+                    // Scheme 2 - only update c2() tags
+                    if (trimmed.startsWith("c2(")) {
+                        Color current = parseColorFromLine(trimmed);
+                        Color newColor = null;
+                        
+                        if (old5th != null && colorsMatch(current, old5th)) {
+                            newColor = color5;
+                        } else if (old6th != null && colorsMatch(current, old6th)) {
+                            newColor = color6;
+                        }
+                        
+                        if (newColor != null) {
+                            String indent = line.substring(0, line.indexOf('c'));
+                            result.append(indent).append(String.format("c2(%d,%d,%d)\n", 
+                                newColor.getRed(), newColor.getGreen(), newColor.getBlue()));
+                        } else {
+                            result.append(line).append("\n");
+                        }
+                        continue;
+                    }
+                }
+                
+                result.append(line).append("\n");
+            }
+            
+            // Save and reload
+            radTextArea.setText(result.toString());
+            Files.write(Paths.get(mergedFilePath), result.toString().getBytes());
+            viewer.loadRadFile(mergedFilePath);
+            viewerContainer.revalidate();
+            viewerContainer.repaint();
+            
+            JOptionPane.showMessageDialog(this, "Colors saved!", "Success", JOptionPane.INFORMATION_MESSAGE);
+            
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            ex.printStackTrace();
+        }
+    }
 
+    private String formatColorLine(String line, String colorName, Color color) {
+        String indent = line.substring(0, line.indexOf(colorName.charAt(0)));
+        return indent + String.format("%s(%d,%d,%d)\n", colorName, color.getRed(), color.getGreen(), color.getBlue());
+    }
+
+    private Color getReplacementColor(Color current, Color... oldNewPairs) {
+        for (int i = 0; i < oldNewPairs.length; i += 2) {
+            Color oldColor = oldNewPairs[i];
+            Color newColor = oldNewPairs[i + 1];
+            if (oldColor != null && colorsMatch(current, oldColor)) {
+                return newColor;
+            }
+        }
+        return null;
+    }
+
+    private Color parseColorFromLine(String line) {
+        try {
+            int start = line.indexOf('(') + 1;
+            int end = line.indexOf(')');
+            String params = line.substring(start, end);
+            String[] values = params.split(",");
+            
+            int r = Integer.parseInt(values[0].trim());
+            int g = Integer.parseInt(values[1].trim());
+            int b = Integer.parseInt(values[2].trim());
+            
+            return new Color(r, g, b);
+        } catch (Exception e) {
+            return Color.BLACK;
+        }
+    }
+
+    private boolean colorsMatch(Color c1, Color c2) {
+        if (c1 == null || c2 == null) return false;
+        return c1.getRed() == c2.getRed() && 
+            c1.getGreen() == c2.getGreen() && 
+            c1.getBlue() == c2.getBlue();
+    }
+
+    public String getRadTextContent() {
+        return radTextArea.getText();
+    }
+
+    public void replaceColorInFile(Color oldColor, Color newColor, int scheme) {
+        if (mergedFilePath == null) return;
+        
+        try {
+            String content = radTextArea.getText();
+            String[] lines = content.split("\n");
+            StringBuilder result = new StringBuilder();
+            
+            String colorTag = "";
+            switch (scheme) {
+                case 0: colorTag = "c("; break;
+                case 1: colorTag = "c1("; break;
+                case 2: colorTag = "c2("; break;
+            }
+            
+            for (String line : lines) {
+                String trimmed = line.trim();
+                
+                if (trimmed.startsWith(colorTag)) {
+                    Color lineColor = parseColorFromLine(trimmed);
+                    if (lineColor != null && colorsMatch(lineColor, oldColor)) {
+                        String indent = line.substring(0, line.indexOf(colorTag.charAt(0)));
+                        result.append(indent).append(String.format("%s%d,%d,%d)\n",
+                            colorTag, newColor.getRed(), newColor.getGreen(), newColor.getBlue()));
+                        continue;
+                    }
+                }
+                
+                result.append(line).append("\n");
+            }
+            
+            radTextArea.setText(result.toString());
+            Files.write(Paths.get(mergedFilePath), result.toString().getBytes());
+            viewer.loadRadFile(mergedFilePath);
+            viewerContainer.revalidate();
+            viewerContainer.repaint();
+            
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
 }
