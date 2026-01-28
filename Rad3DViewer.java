@@ -285,6 +285,14 @@ public class Rad3DViewer extends JPanel
         }
     }
 
+    public ContO getCarModel() {
+        return carModel;
+        }
+
+    public ContO getWheelModel() {
+            return wheelModel;
+        }
+
 
     // Helper: whichever model is present (wheel first, else car)
    private ContO getActiveModel() {

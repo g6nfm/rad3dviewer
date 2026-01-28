@@ -49,6 +49,20 @@ public class ContO {
     
     public int wheelCount = 0;
 
+    public static class WheelAnchor {
+        public int x, y, z;
+        public int rotates;
+        public int width;
+        public int size;
+        public int modelId;
+        public boolean custom;
+
+        public int startIndex;   // first poly index for this wheel
+        public int polyCount;    // how many polys this wheel uses
+    }
+
+    public final WheelAnchor[] anchors = new WheelAnchor[8];
+
     
 
     Wheels wheels = new Wheels();
@@ -85,7 +99,7 @@ public class ContO {
         int width,
         int size
 ) {
-    boolean mirror = (wheelIndex % 2 == 1);
+    //boolean mirror = (wheelIndex % 2 == 1);
 
     for (TempPoly poly : model) {
 
@@ -98,7 +112,7 @@ public class ContO {
 
         for (int v = 0; v < poly.n; v++) {
 
-            int lx = mirror ? -poly.ox[v] : poly.ox[v];
+            int lx = poly.ox[v];
             int ly = poly.oy[v];
             int lz = poly.oz[v];
 
@@ -449,71 +463,98 @@ public class ContO {
                     continue;
                 }
 
-
                 // -------- STEP 6: Wheel anchors + model instancing --------
                 if (line.startsWith("w(") && j < 8) {
+
                     int wxv = (int)(Utility.getint("w", line, 0) * div * nfmm_scale[0]);
                     int wyv = (int)(Utility.getint("w", line, 1) * div * nfmm_scale[1]);
                     int wzv = (int)(Utility.getint("w", line, 2) * div * nfmm_scale[2]);
                     int rotates = Utility.getint("w", line, 3);
                     int width   = (int)(Utility.getint("w", line, 4) * div * wid);
                     int size    = (int)(Utility.getint("w", line, 5) * div);
-                    //int modelID = Utility.getint("w", line, 6);
-                    // Get all parameters inside the parentheses
+
+                    // Parse the optional modelID
                     String inside = line.substring(line.indexOf('(') + 1, line.lastIndexOf(')'));
                     String[] parts = inside.split(",");
-                    // CASE A: custom wheel models exist → expect 7 parameters
-                   // Default: use normal NFM wheel
+
                     int modelID = -1;
-                    // Parse modelID ONLY if the line actually has it
                     if (parts.length >= 7) {
                         try {
                             modelID = Integer.parseInt(parts[6].trim());
-                        } catch (Exception ignored) {
-                            modelID = -1;
-                        }
+                        } catch (Exception ignored) {}
                     }
+
+                    // store wheel anchor positions
                     keyx[j] = wxv;
                     keyz[j] = wzv;
-
                     wx[j] = wxv;
                     wy[j] = wyv;
                     wz[j] = wzv;
 
-                    // Assign rim colours for this wheel from the current axle colours
+                    // create metadata entry
+                    anchors[j] = new WheelAnchor();
+                    WheelAnchor wa = anchors[j];
+
+                    wa.x       = wxv;
+                    wa.y       = wyv;
+                    wa.z       = wzv;
+                    wa.rotates = rotates;
+                    wa.width   = width;
+                    wa.size    = size;
+                    wa.modelId = modelID;
+
+                    // rim colours for this wheel (per axle)
                     if (wheelCount < 8) {
                         SimpleColor base = pendingRim0;
                         if (base != null) {
                             wheelRimColorOriginal[wheelCount] = base;
-
-                            // for skin1/skin2: if not specified, fall back to base colour
                             wheelRimColor1[wheelCount] = (pendingRim1 != null) ? pendingRim1 : base;
                             wheelRimColor2[wheelCount] = (pendingRim2 != null) ? pendingRim2 : base;
                         }
                     }
 
-
+                    // Optional custom wheel model
                     List<TempPoly> model = wheelModels.get(modelID);
-                    // ALWAYS run wheels.make() BUT DO NOT USE ITS POLYGONS.
-                    int oldNpl = npl;
-                    // Run physics setup
+
+                    int oldNpl = npl;   // save start index before generating wheel polys
+
+                    // run physics setup (hitbox, ground)
                     wheels.make(m, p, npl, wxv, wyv, wzv, rotates, width, size, gwgr, false);
 
+                    // restore polygon pointer so physics polys don't get added
                     npl = oldNpl;
+
+                    int polyCount;
+
                     if (modelID != -1 && model != null && !model.isEmpty()) {
-                        isCustomWheel[j] = true;          
+                        // custom wheel
+                        isCustomWheel[j] = true;
+                        wa.custom = true;
+
                         makeCustomWheel(npl, wxv, wyv, wzv, rotates, model, j, width, size);
-                        npl += model.size();
+                        polyCount = model.size();
+                        npl += polyCount;
+
                     } else {
-                        // Non-custom fallback:
+                        // stock wheel
                         isCustomWheel[j] = false;
+                        wa.custom = false;
+
                         wheels.make(m, p, npl, wxv, wyv, wzv, rotates, width, size, gwgr, false);
+                        polyCount = 15;        // stock wheel poly count
                         npl += 15;
                     }
+
+                    // now that the polys are added, record the metadata
+                    wa.startIndex = oldNpl;
+                    wa.polyCount  = polyCount;
+
                     j++;
-                    wheelCount = j;   // <--- number of wheels parsed
+                    wheelCount = j;   // total wheels parsed
+
                     continue;
                 }
+
                 if (line.startsWith("shadow")) {
                     shadow = true;
                 }
@@ -554,6 +595,132 @@ public class ContO {
         grat = wheels.ground;
 
 
+    }
+
+    public void applyWheelEdit(ContO car,
+                           int wheelModelID,
+                            List<Integer> selectedWheels,
+                            int newWidth,
+                            int newSize,
+                            int newX,
+                            int newY,
+                            int newZ,
+                            int newRotates) {
+
+        List<ContO.TempPoly> model = car.wheelModels.get(wheelModelID);
+        if (model == null || model.isEmpty()) return;
+
+        for (int w : selectedWheels) {
+
+            // ---------------------------------------
+            // 1. Remove the old polygons for wheel w
+            // ---------------------------------------
+            WheelAnchor wa = car.anchors[w];
+            if (wa == null) continue;
+
+            int oldStart = wa.startIndex;
+            int oldCount = wa.polyCount;
+
+            if (oldCount > 0) {
+                // Shift p[] down to remove old polys
+                for (int i = oldStart; i < car.npl - oldCount; i++) {
+                    car.p[i] = car.p[i + oldCount];
+                }
+
+                car.npl -= oldCount;
+
+                // Fix startIndex for wheels AFTER this one
+                for (int ww = w + 1; ww < car.wheelCount; ww++) {
+                    if (car.anchors[ww] != null) {
+                        car.anchors[ww].startIndex -= oldCount;
+                    }
+                }
+            }
+
+            // Now polygon block for wheel w is empty
+
+            // ---------------------------------------
+            // 2. Insert new wheel polys using makeCustomWheel()
+            // ---------------------------------------
+            int insertAt = oldStart;  // reuse the old start index
+
+            // Make space in the array BEFORE inserting new polys
+            int newCount = model.size();
+            for (int i = car.npl - 1; i >= insertAt; i--) {
+                car.p[i + newCount] = car.p[i];
+            }
+
+            // Now insert the new polys at the correct spot
+            car.makeCustomWheel(
+                insertAt,
+                wa.x, wa.y, wa.z,
+                wa.rotates,
+                model,
+                w,
+                newWidth,
+                newSize
+            );
+
+            car.npl += newCount;
+
+            // ---------------------------------------
+            // 3. Update WheelAnchor metadata
+            // ---------------------------------------
+            wa.custom   = true;
+            wa.modelId  = wheelModelID;
+            wa.width    = newWidth;
+            wa.size     = newSize;
+
+            wa.startIndex = insertAt;
+            wa.polyCount  = newCount;
+
+            // ---------------------------------------
+            // 4. Move later wheels forward
+            // ---------------------------------------
+            for (int ww = w + 1; ww < car.wheelCount; ww++) {
+                if (car.anchors[ww] != null) {
+                    car.anchors[ww].startIndex += newCount;
+                }
+            }
+        }
+    }
+
+    private void removeWheel(ContO car, int wheelIndex) {
+        WheelAnchor wa = car.anchors[wheelIndex];
+        if (wa == null) return;
+
+        int start = wa.startIndex;
+        int count = wa.polyCount;
+
+        if (count <= 0) {
+            // No polys to remove (probably never drawn or already overwritten)
+            return;
+        }
+
+        // ---------------------------------------
+        // Shift polygons DOWN to cover removed wheel block
+        // ---------------------------------------
+        for (int i = start; i < car.npl - count; i++) {
+            car.p[i] = car.p[i + count];
+        }
+
+        car.npl -= count;
+
+        // ---------------------------------------
+        // Fix all later wheels' startIndex
+        // ---------------------------------------
+        for (int w = wheelIndex + 1; w < car.wheelCount; w++) {
+            WheelAnchor next = car.anchors[w];
+            if (next != null) {
+                next.startIndex -= count;
+            }
+        }
+
+        // ---------------------------------------
+        // Reset metadata for this wheel so it can be rebuilt
+        // ---------------------------------------
+        wa.polyCount = 0;
+        wa.custom = false;  // after removal, no longer custom polys exist
     }
 
     public void applySkin(int skinIndex) {
