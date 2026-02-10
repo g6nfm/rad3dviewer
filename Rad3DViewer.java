@@ -68,6 +68,12 @@ public class Rad3DViewer extends JPanel
         requestFocusInWindow();
     }
 
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        requestFocusInWindow();
+    }
+
     /**
      * Loads the given .rad file, builds the ContO carmodel using our Medium/Trackers,
      * and then positions the carCarModel.
@@ -144,7 +150,7 @@ public class Rad3DViewer extends JPanel
             Medium.h  = ph;
             Medium.cx = pw / 2;
             Medium.cy = ph / 2;
-            Medium.cz = ph / 2;
+            Medium.cz = ph / 8;
 
             // --------------------------
             // ENVIRONMENT PER VIEWER
@@ -307,6 +313,7 @@ public class Rad3DViewer extends JPanel
      // --- MouseListener ---
     @Override
     public void mousePressed(MouseEvent e) {
+        requestFocusInWindow(); // Add this line
         lastMouseX = e.getX();
         lastMouseY = e.getY();
     }
@@ -344,13 +351,15 @@ public class Rad3DViewer extends JPanel
         if (m == null) return;
 
         int notches = e.getWheelRotation();
-        m.z += notches * 100;   // zoom whichever is active
+        m.z += notches * 20;   // Changed from 100 to 20 for smaller steps
         repaint();
     }
 
     // --- KeyListener ---
     @Override
     public void keyPressed(KeyEvent e) {
+        System.out.println("Key pressed: " + e.getKeyCode()); // Debug line
+        
         ContO m = getActiveModel();
         if (m == null) return;
 
@@ -371,6 +380,15 @@ public class Rad3DViewer extends JPanel
                 repaint();
                 break;
             case KeyEvent.VK_DOWN:
+                m.y -= 5;
+                repaint();
+                break;
+            case KeyEvent.VK_PLUS:
+            case KeyEvent.VK_EQUALS:  // '+' key (with or without shift)
+                m.y += 5;
+                repaint();
+                break;
+            case KeyEvent.VK_MINUS:
                 m.y -= 5;
                 repaint();
                 break;

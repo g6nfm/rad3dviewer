@@ -103,15 +103,25 @@ public class ColorPaletteEditor extends JPanel {
         colorGridPanel = new JPanel();
         colorGridPanel.setOpaque(false);
         colorGridPanel.setLayout(new FlowLayout(FlowLayout.CENTER, 5, 5));
-        colorGridPanel.setMaximumSize(new Dimension(750, 100));
-        
+        // REMOVE this line that limits the height:
+        // colorGridPanel.setMaximumSize(new Dimension(750, 100));
+        // REPLACE with:
+        colorGridPanel.setPreferredSize(new Dimension(750, 100)); // Initial size
+        colorGridPanel.setMaximumSize(new Dimension(750, 300)); // Allow expansion up to 300px
+
         JLabel gridLabel = new JLabel("Click a color to edit:");
         gridLabel.setForeground(Color.WHITE);
         gridLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         controlPanel.add(gridLabel);
         controlPanel.add(Box.createVerticalStrut(3));
-        controlPanel.add(colorGridPanel);
-        controlPanel.add(Box.createVerticalStrut(8));
+
+        // Wrap colorGridPanel in a JScrollPane for very large color counts
+        JScrollPane colorScroll = new JScrollPane(colorGridPanel);
+        colorScroll.setOpaque(false);
+        colorScroll.getViewport().setOpaque(false);
+        colorScroll.setBorder(null);
+        colorScroll.setMaximumSize(new Dimension(780, 150)); // Scrollable area
+        controlPanel.add(colorScroll);
         
         // Editor panel (hidden until color selected)
         editorPanel = new JPanel();
@@ -501,8 +511,8 @@ public class ColorPaletteEditor extends JPanel {
             colorGridPanel.add(createColorBlock(entry.getKey(), false));
         }
         
-        // Add RIM colors
-        if (!rimColors.isEmpty()) {
+       // Add RIM colors - ONLY if car doesn't have custom wheels
+        if (!rimColors.isEmpty() && !hasCustomWheels(fileContent)) {
             colorGridPanel.add(Box.createHorizontalStrut(20));
             
             JLabel rimLabel = new JLabel("Rims:  ");
@@ -685,5 +695,10 @@ public class ColorPaletteEditor extends JPanel {
     
     public int getCurrentScheme() {
         return currentScheme;
+    }
+
+    private boolean hasCustomWheels(String fileContent) {
+        if (fileContent == null) return false;
+        return fileContent.contains("<wheelModel(");
     }
 }
