@@ -806,7 +806,7 @@ public class ContO {
 
 
 
-    public void d(Graphics2D rd) {
+    public void d(Graphics2D rd, int hoveredPoly, Set<Integer> selectedPolygons) {
 
         
         int i = Medium.cx + (int) ((x - Medium.x - Medium.cx) * RadicalMath.cos(Medium.xz) - (z - Medium.z - Medium.cz) * RadicalMath.sin(Medium.xz));
@@ -814,8 +814,7 @@ public class ContO {
         int k = Medium.cz + (int) ((y - Medium.y - Medium.cy) * RadicalMath.sin(Medium.zy) + (j - Medium.cz) * RadicalMath.cos(Medium.zy));
         int l = Utility.cXs(i + maxR, k) - Utility.cXs(i - maxR, k);
 
-
-      
+        
 
         if (Utility.cXs(i + maxR * 2, k) > 0 && Utility.cXs(i - maxR * 2, k) < Medium.w && k > -maxR
                 && (k < Medium.fade[disline] + maxR || Medium.trk)) {
@@ -892,8 +891,9 @@ public class ContO {
                 }
 
                 for (int l3 = 0; l3 < npl; l3++) {
-                    p[ai1[l3]].d(rd, x - Medium.x, y - Medium.y, z - Medium.z, xz, xy, zy, wxz, wzy, noline, l);
-                    
+                    boolean isHovered = (ai1[l3] == hoveredPoly);
+                    boolean isSelected = selectedPolygons != null && selectedPolygons.contains(ai1[l3]);  // FIX: use ai1[l3] not i
+                    p[ai1[l3]].d(rd, x - Medium.x, y - Medium.y, z - Medium.z, xz, xy, zy, wxz, wzy, noline, l, isHovered, isSelected);
                 }
 
                 

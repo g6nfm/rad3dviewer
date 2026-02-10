@@ -4,7 +4,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
+
 import javax.swing.*;
+
 
 public class Rad3DViewer extends JPanel
         implements MouseListener, MouseMotionListener, MouseWheelListener, KeyListener {
@@ -22,6 +26,15 @@ public class Rad3DViewer extends JPanel
     // The drawing panel that does the custom painting.
     private DrawingPanel drawingPanel;
 
+    private int mouseX = -1;
+    private int mouseY = -1;
+    private int hoveredPolyIndex = -1;
+
+    private Set<Integer> selectedPolygons = new HashSet<>();
+    private SelectionToolbar selectionToolbar;
+
+    private int cameraDistance = 0; // Stores zoom offset
+
 
     private boolean isWheelViewer = false;
 
@@ -30,16 +43,48 @@ public class Rad3DViewer extends JPanel
     }
 
     public Rad3DViewer() {
-        setLayout(new BorderLayout());
-        setPreferredSize(new Dimension(1024, 768));
+    setLayout(new BorderLayout());
+    //setPreferredSize(new Dimension(1024, 768));
 
-        medium = new Medium();
+    medium = new Medium();
 
-        drawingPanel = new DrawingPanel();
-        drawingPanel.setOpaque(false);
-        add(drawingPanel, BorderLayout.CENTER);
+    // Create layered pane for overlay
+    JLayeredPane layeredPane = new JLayeredPane();
+    layeredPane.setPreferredSize(new Dimension(1024, 768));
+    
+    drawingPanel = new DrawingPanel();
+    drawingPanel.setOpaque(false);
+    drawingPanel.setBounds(0, 0, 1024, 768);
+    
+    selectionToolbar = new SelectionToolbar();
 
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 5));
+
+    int toolbarWidth = 950;
+    int centerX = (1024 - toolbarWidth) / 2;
+    selectionToolbar.setBounds(centerX, 0, toolbarWidth, 50);
+
+
+
+    //selectionToolbar.setBounds(0, 0, 900, 50);  // Make sure width matches viewer width
+    
+    // Setup toolbar actions
+    selectionToolbar.setChangeColorAction(() -> changeSelectedPolygonsColor());
+    selectionToolbar.setTranslateAction(() -> translateSelectedPolygons());
+    selectionToolbar.setGoToCodeAction(() -> goToSelectedPolygonCode());
+    selectionToolbar.setRemoveAction(() -> removeSelectedPolygons());
+    selectionToolbar.setCloseAction(() -> {
+        selectedPolygons.clear();
+        selectionToolbar.clearSelection();
+        repaint();
+    });
+    
+    // Add to layered pane
+    layeredPane.add(drawingPanel, JLayeredPane.DEFAULT_LAYER);
+    layeredPane.add(selectionToolbar, JLayeredPane.PALETTE_LAYER);
+    
+    add(layeredPane, BorderLayout.CENTER);
+
+    JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 5));
         JButton btnOriginal = new JButton("Original");
         btnOriginal.addActionListener(e -> {
             colorScheme = 0;
@@ -106,14 +151,12 @@ public class Rad3DViewer extends JPanel
             // Build a NEW ContO specifically for wheels
             wheelModel = new ContO(fileData, medium);
 
-            // Position the wheel in front of the camera box
+            // Use ORIGINAL working position values
             wheelModel.x = 110;
             wheelModel.y = 100;
-            wheelModel.z = 400;     // closer than the car
+            wheelModel.z = 400; 
             wheelModel.zy = 0;
             wheelModel.xz = 0;
-
-            
 
         } catch (IOException ex) {
             ex.printStackTrace();
@@ -125,7 +168,7 @@ public class Rad3DViewer extends JPanel
         private class DrawingPanel extends JPanel {
 
         public DrawingPanel() {
-            setPreferredSize(new Dimension(1024, 768));
+            //setPreferredSize(new Dimension(1024, 768));
         }
 
         @Override
@@ -149,8 +192,23 @@ public class Rad3DViewer extends JPanel
             Medium.w  = pw;
             Medium.h  = ph;
             Medium.cx = pw / 2;
-            Medium.cy = ph / 2;
-            Medium.cz = ph / 8;
+            Medium.cy = ph / 2;  // ADD THIS LINE
+            // Different camera for wheel vs car viewer
+            if (isWheelViewer) {
+                Medium.cx = 0;
+                Medium.cz = 200;  // Fixed camera distance for wheel viewer
+                Medium.cy = 100;
+            } else {
+                Medium.cz = ph / 8 + cameraDistance;  // Main viewer with zoom
+            }
+
+            // ADD THESE DEBUG LINES:
+            if (isWheelViewer) {
+                System.out.println("WHEEL VIEWER: pw=" + pw + ", ph=" + ph + ", Medium.cz=" + Medium.cz);
+                if (wheelModel != null) {
+                    System.out.println("  wheelModel.x=" + wheelModel.x + ", y=" + wheelModel.y + ", z=" + wheelModel.z);
+                }
+            }
 
             // --------------------------
             // ENVIRONMENT PER VIEWER
@@ -182,6 +240,9 @@ public class Rad3DViewer extends JPanel
             // ============ CAR MODEL ============
             if (carModel != null && !isWheelViewer) {
                 carModel.x = Medium.cx;
+
+                // Find which polygon is hovered
+                hoveredPolyIndex = findHoveredPoly(carModel);
 
                 int nPlanes = carModel.npl;
 
@@ -227,7 +288,15 @@ public class Rad3DViewer extends JPanel
                     }
                 }
 
-                carModel.d(g2d);
+                carModel.d(g2d, hoveredPolyIndex, selectedPolygons);
+
+                // After calling carModel.d(g2d, hoveredPolyIndex);
+                // Highlight selected polygons
+                for (int selectedPoly : selectedPolygons) {
+                    if (selectedPoly >= 0 && selectedPoly < carModel.npl) {
+                        // Draw selection indicator (you can customize this)
+                    }
+                }
 
                 for (int i = 0; i < nPlanes; i++) {
                     Plane p = carModel.p[i];
@@ -238,6 +307,7 @@ public class Rad3DViewer extends JPanel
 
             // ============ WHEEL MODEL ============
             if (wheelModel != null) {
+                //wheelModel.x = Medium.cx;  // Re-center every frame
                 int wn = wheelModel.npl;
 
                 int[][] wBackupOx = new int[wn][];
@@ -249,19 +319,7 @@ public class Rad3DViewer extends JPanel
                     wBackupOz[i] = p.oz.clone();
                 }
 
-                int wTotalX = 0, wTotalZ = 0, wCount = 0;
-                for (int i = 0; i < wn; i++) {
-                    Plane p = wheelModel.p[i];
-                    for (int v = 0; v < p.n; v++) {
-                        wTotalX += p.ox[v];
-                        wTotalZ += p.oz[v];
-                        wCount++;
-                    }
-                }
-
-                int wCenterX = wCount > 0 ? wTotalX / wCount : 0;
-                int wCenterZ = wCount > 0 ? wTotalZ / wCount : 0;
-
+                // Rotate wheel around origin (0,0,0) for proper centering
                 float wAng = (float) Math.toRadians(wheelAngle);
                 float wCos = (float) Math.cos(wAng);
                 float wSin = (float) Math.sin(wAng);
@@ -272,15 +330,13 @@ public class Rad3DViewer extends JPanel
                         int ox = p.ox[v];
                         int oz = p.oz[v];
 
-                        int rx = ox - wCenterX;
-                        int rz = oz - wCenterZ;
-
-                        p.ox[v] = wCenterX + (int) (rx * wCos - rz * wSin);
-                        p.oz[v] = wCenterZ + (int) (rx * wSin + rz * wCos);
+                        // Rotate around origin (0,0,0)
+                        p.ox[v] = (int) (ox * wCos - oz * wSin);
+                        p.oz[v] = (int) (ox * wSin + oz * wCos);
                     }
                 }
 
-                wheelModel.d(g2d);
+                wheelModel.d(g2d, -1, new HashSet<>());
 
                 for (int i = 0; i < wn; i++) {
                     Plane p = wheelModel.p[i];
@@ -310,48 +366,209 @@ public class Rad3DViewer extends JPanel
         return carModel;
     }
 
-     // --- MouseListener ---
-    @Override
+    private int findHoveredPoly(ContO model) {
+        if (model == null || mouseX == -1 || mouseY == -1) return -1;
+        
+        // Get the rotation angle for this model
+        double angle = (model == carModel) ? modelAngle : wheelAngle;
+        
+        // Calculate center of model (same as in paintComponent)
+        int totalX = 0, totalZ = 0, vcount = 0;
+        for (int i = 0; i < model.npl; i++) {
+            Plane p = model.p[i];
+            for (int v = 0; v < p.n; v++) {
+                totalX += p.ox[v];
+                totalZ += p.oz[v];
+                vcount++;
+            }
+        }
+        int centerX = (vcount > 0) ? totalX / vcount : 0;
+        int centerZ = (vcount > 0) ? totalZ / vcount : 0;
+        
+        float ang = (float) Math.toRadians(angle);
+        float cosA = (float) Math.cos(ang);
+        float sinA = (float) Math.sin(ang);
+        
+        int closestPoly = -1;
+        int closestDepth = Integer.MAX_VALUE;
+        
+        // Check each polygon
+        for (int i = 0; i < model.npl; i++) {
+            Plane p = model.p[i];
+            if (p == null) continue;
+            
+            int[] screenX = new int[p.n];
+            int[] screenY = new int[p.n];
+            int avgDepth = 0;
+            
+            for (int v = 0; v < p.n; v++) {
+                // Apply model rotation around center
+                int ox = p.ox[v];
+                int oz = p.oz[v];
+                
+                int rx = ox - centerX;
+                int rz = oz - centerZ;
+                
+                int rotX = centerX + (int)(rx * cosA - rz * sinA);
+                int rotZ = centerZ + (int)(rx * sinA + rz * cosA);
+                
+                // Now transform to world space
+                int wx = model.x + rotX - Medium.x;
+                int wy = model.y + p.oy[v] - Medium.y;
+                int wz = model.z + rotZ - Medium.z;
+                
+                // Apply camera rotation
+                int camX = Medium.cx + (int)((wx - Medium.cx) * RadicalMath.cos(Medium.xz) 
+                        - (wz - Medium.cz) * RadicalMath.sin(Medium.xz));
+                int camZ = Medium.cz + (int)((wx - Medium.cx) * RadicalMath.sin(Medium.xz) 
+                        + (wz - Medium.cz) * RadicalMath.cos(Medium.xz));
+                
+                // Accumulate depth for this polygon
+                avgDepth += camZ;
+                
+                // Project to screen
+                screenX[v] = Utility.xs(camX, camZ);
+                screenY[v] = Utility.ys(wy, camZ, 0);
+            }
+            
+            // Calculate average depth
+            avgDepth /= p.n;
+            
+            // Check if mouse is inside this polygon AND it's closer than previous matches
+            if (isPointInPolygon(mouseX, mouseY, screenX, screenY, p.n)) {
+                if (avgDepth < closestDepth) {
+                    closestDepth = avgDepth;
+                    closestPoly = i;
+                }
+            }
+        }
+        
+        return closestPoly;
+    }
+
+    private boolean isPointInPolygon(int px, int py, int[] polyX, int[] polyY, int n) {
+        boolean inside = false;
+        for (int i = 0, j = n - 1; i < n; j = i++) {
+            if ((polyY[i] > py) != (polyY[j] > py) &&
+                (px < (polyX[j] - polyX[i]) * (py - polyY[i]) / (polyY[j] - polyY[i]) + polyX[i])) {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+
+    
+    @Override public void mouseReleased(MouseEvent e) {}
+    @Override public void mouseEntered(MouseEvent e) {}
+    @Override public void mouseExited(MouseEvent e) {}
+
+   @Override
     public void mousePressed(MouseEvent e) {
-        requestFocusInWindow(); // Add this line
+        // Update mouse position first
+        mouseX = e.getX();
+        mouseY = e.getY();
+        
+        requestFocusInWindow();
+        
+        // Left click - paint mode takes priority
+        if (SwingUtilities.isLeftMouseButton(e) && hoveredPolyIndex != -1) {
+            
+            // Check if in paint mode FIRST
+            if (isInPaintMode()) {
+                paintPolygon(hoveredPolyIndex);
+                repaint();
+                return;  // Don't process selection or toolbar
+            }
+            
+            // Normal selection mode
+            if (e.isControlDown()) {
+                // Ctrl + Click = Add to selection
+                if (selectedPolygons.contains(hoveredPolyIndex)) {
+                    selectedPolygons.remove(hoveredPolyIndex);
+                } else {
+                    selectedPolygons.add(hoveredPolyIndex);
+                }
+            } else {
+                // Normal click = Replace selection
+                selectedPolygons.clear();
+                selectedPolygons.add(hoveredPolyIndex);
+            }
+            
+            // Update toolbar
+            ContO model = getActiveModel();
+            if (model != null) {
+                selectionToolbar.setSelection(selectedPolygons, model.npl);
+            }
+            
+            repaint();
+            return;
+        }
+        
+        // Otherwise - normal drag behavior
         lastMouseX = e.getX();
         lastMouseY = e.getY();
     }
-    @Override public void mouseReleased(MouseEvent e) {}
-    @Override public void mouseClicked(MouseEvent e) {}
-    @Override public void mouseEntered(MouseEvent e) {}
-    @Override public void mouseExited(MouseEvent e) {}
+
+    @Override 
+    public void mouseClicked(MouseEvent e) {
+        // Also handle left-click here as a backup
+        if (SwingUtilities.isLeftMouseButton(e)) {
+            mouseX = e.getX();
+            mouseY = e.getY();
+            
+            // Recalculate hovered poly
+            ContO model = getActiveModel();
+            if (model != null) {
+                hoveredPolyIndex = findHoveredPoly(model);
+                if (hoveredPolyIndex != -1) {
+                    //showPolygonContextMenu(e.getX(), e.getY());
+                }
+            }
+        }
+    }
 
     // --- MouseMotionListener ---
     @Override
     public void mouseDragged(MouseEvent e) {
-        ContO m = getActiveModel();
-        if (m == null) return;
+        // Update mouse position during drag too
+        mouseX = e.getX();
+        mouseY = e.getY();
+        
+        // Only rotate when NOT clicking on a polygon
+        if (hoveredPolyIndex == -1) {
+            ContO m = getActiveModel();
+            if (m == null) return;
 
-        int dx = e.getX() - lastMouseX;
+            int dx = e.getX() - lastMouseX;
 
-        // Rotate correct angle
-        if (m == carModel) {
-            modelAngle += dx;
-        } else {
-            wheelAngle += dx;
+            // Rotate correct angle
+            if (m == carModel) {
+                modelAngle += dx;
+            } else {
+                wheelAngle += dx;
+            }
+
+            lastMouseX = e.getX();
+            lastMouseY = e.getY();
         }
-
-        lastMouseX = e.getX();
-        lastMouseY = e.getY();
+        
         repaint();
     }
 
-    @Override public void mouseMoved(MouseEvent e) {}
+    @Override 
+    public void mouseMoved(MouseEvent e) {
+        mouseX = e.getX();
+        mouseY = e.getY();
+        repaint();
+    }
 
-    // --- MouseWheelListener ---
     @Override
     public void mouseWheelMoved(MouseWheelEvent e) {
         ContO m = getActiveModel();
         if (m == null) return;
 
         int notches = e.getWheelRotation();
-        m.z += notches * 20;   // Changed from 100 to 20 for smaller steps
+        cameraDistance += notches * 20;  // Store zoom offset
         repaint();
     }
 
@@ -407,5 +624,339 @@ public class Rad3DViewer extends JPanel
     
     @Override public void keyReleased(KeyEvent e) {}
     @Override public void keyTyped(KeyEvent e) {}
+    
+    
+    private void changePolygonColor(int polyIndex) {
+        ContO model = getActiveModel();
+        if (model == null || polyIndex >= model.npl) return;
+        
+        Plane poly = model.p[polyIndex];
+        
+        // Get current color
+        Color currentColor = new Color(poly.oc[0], poly.oc[1], poly.oc[2]);
+        
+        // Show compact color editor as overlay with callback
+        ColorPaletteEditor.showCompactColorEditor(this, currentColor, newColor -> {
+            // Update polygon color
+            poly.c[0] = newColor.getRed();
+            poly.c[1] = newColor.getGreen();
+            poly.c[2] = newColor.getBlue();
+            
+            poly.oc[0] = newColor.getRed();
+            poly.oc[1] = newColor.getGreen();
+            poly.oc[2] = newColor.getBlue();
+            
+            // Update HSB
+            float[] hsb = Color.RGBtoHSB(newColor.getRed(), newColor.getGreen(), newColor.getBlue(), null);
+            poly.hsb[0] = hsb[0];
+            poly.hsb[1] = hsb[1];
+            poly.hsb[2] = hsb[2];
+            
+            // Update the color in the model's skin lists
+            int colorIndex = findColorIndex(model, polyIndex);
+            if (colorIndex != -1) {
+                SimpleColor sc = new SimpleColor(newColor.getRed(), newColor.getGreen(), newColor.getBlue());
+                model.original.set(colorIndex, sc);
+                model.skin1.set(colorIndex, sc);
+                model.skin2.set(colorIndex, sc);
+            }
+            
+            // Notify parent to update the file
+            updatePolygonColorInFile(polyIndex, newColor);
+            
+            repaint();
+        });
+    }
 
+    private void translatePolygon(int polyIndex) {
+        ContO model = getActiveModel();
+        if (model == null || polyIndex >= model.npl) return;
+        
+        Plane poly = model.p[polyIndex];
+        
+        // Create dialog with input fields
+        JPanel panel = new JPanel(new GridLayout(3, 2, 5, 5));
+        
+        JLabel xLabel = new JLabel("X offset:");
+        JTextField xField = new JTextField("0", 10);
+        
+        JLabel yLabel = new JLabel("Y offset:");
+        JTextField yField = new JTextField("0", 10);
+        
+        JLabel zLabel = new JLabel("Z offset:");
+        JTextField zField = new JTextField("0", 10);
+        
+        panel.add(xLabel);
+        panel.add(xField);
+        panel.add(yLabel);
+        panel.add(yField);
+        panel.add(zLabel);
+        panel.add(zField);
+        
+        int result = JOptionPane.showConfirmDialog(
+            this,
+            panel,
+            "Translate Polygon",
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.PLAIN_MESSAGE
+        );
+        
+        if (result == JOptionPane.OK_OPTION) {
+            try {
+                int dx = Integer.parseInt(xField.getText().trim());
+                int dy = Integer.parseInt(yField.getText().trim());
+                int dz = Integer.parseInt(zField.getText().trim());
+                
+                // Apply translation to all vertices
+                for (int v = 0; v < poly.n; v++) {
+                    poly.ox[v] += dx;
+                    poly.oy[v] += dy;
+                    poly.oz[v] += dz;
+                }
+                
+                // Notify parent to update the file
+                updatePolygonTranslationInFile(polyIndex, dx, dy, dz);
+                
+                repaint();
+                
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this, 
+                    "Invalid input. Please enter integer values.", 
+                    "Error", 
+                    JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    private void goToPolygonCode(int polyIndex) {
+        // Get parent RadMergerGUI
+        Component parent = this;
+        while (parent != null && !(parent instanceof RadMergerGUI)) {
+            parent = parent.getParent();
+        }
+        
+        if (parent instanceof RadMergerGUI) {
+            RadMergerGUI gui = (RadMergerGUI) parent;
+            gui.goToPolygonInEditor(polyIndex);
+        }
+    }
+
+    private int findColorIndex(ContO model, int polyIndex) {
+        // Count non-glass polygons before this one
+        int colorIndex = 0;
+        for (int i = 0; i < polyIndex; i++) {
+            if (!model.p[i].glass) {
+                colorIndex++;
+            }
+        }
+        
+        if (model.p[polyIndex].glass) {
+            return -1;  // Glass polygons don't have colors in the list
+        }
+        
+        return colorIndex;
+    }
+
+    private void updatePolygonColorInFile(int polyIndex, Color newColor) {
+        Component parent = this;
+        while (parent != null && !(parent instanceof RadMergerGUI)) {
+            parent = parent.getParent();
+        }
+        
+        if (parent instanceof RadMergerGUI) {
+            RadMergerGUI gui = (RadMergerGUI) parent;
+            gui.updatePolygonColorInFile(polyIndex, newColor, colorScheme);
+        }
+    }
+
+    private void updatePolygonTranslationInFile(int polyIndex, int dx, int dy, int dz) {
+        Component parent = this;
+        while (parent != null && !(parent instanceof RadMergerGUI)) {
+            parent = parent.getParent();
+        }
+        
+        if (parent instanceof RadMergerGUI) {
+            RadMergerGUI gui = (RadMergerGUI) parent;
+            gui.updatePolygonTranslationInFile(polyIndex, dx, dy, dz);
+        }
+    }
+
+    private void changeSelectedPolygonsColor() {
+        if (selectedPolygons.isEmpty()) return;
+        
+        ContO model = getActiveModel();
+        if (model == null) return;
+        
+        // Get color from first selected polygon
+        int firstPoly = selectedPolygons.iterator().next();
+        Plane poly = model.p[firstPoly];
+        Color currentColor = new Color(poly.oc[0], poly.oc[1], poly.oc[2]);
+        
+        ColorPaletteEditor.showCompactColorEditor(this, currentColor, newColor -> {
+            // Apply to all selected polygons
+            for (int polyIndex : selectedPolygons) {
+                changePolygonColorDirect(polyIndex, newColor);
+            }
+            
+            // Clear selection after operation
+            selectedPolygons.clear();
+            selectionToolbar.clearSelection();
+            repaint();
+        });
+    }
+
+    private void changePolygonColorDirect(int polyIndex, Color newColor) {
+        ContO model = getActiveModel();
+        if (model == null || polyIndex >= model.npl) return;
+        
+        Plane poly = model.p[polyIndex];
+        
+        poly.c[0] = newColor.getRed();
+        poly.c[1] = newColor.getGreen();
+        poly.c[2] = newColor.getBlue();
+        
+        poly.oc[0] = newColor.getRed();
+        poly.oc[1] = newColor.getGreen();
+        poly.oc[2] = newColor.getBlue();
+        
+        float[] hsb = Color.RGBtoHSB(newColor.getRed(), newColor.getGreen(), newColor.getBlue(), null);
+        poly.hsb[0] = hsb[0];
+        poly.hsb[1] = hsb[1];
+        poly.hsb[2] = hsb[2];
+        
+        int colorIndex = findColorIndex(model, polyIndex);
+        if (colorIndex != -1) {
+            SimpleColor sc = new SimpleColor(newColor.getRed(), newColor.getGreen(), newColor.getBlue());
+            model.original.set(colorIndex, sc);
+            model.skin1.set(colorIndex, sc);
+            model.skin2.set(colorIndex, sc);
+        }
+        
+        updatePolygonColorInFile(polyIndex, newColor);
+    }
+
+    private void translateSelectedPolygons() {
+        if (selectedPolygons.isEmpty()) return;
+        
+        // Show translation dialog
+        JPanel panel = new JPanel(new GridLayout(3, 2, 5, 5));
+        panel.add(new JLabel("X offset:"));
+        JTextField xField = new JTextField("0");
+        panel.add(xField);
+        
+        panel.add(new JLabel("Y offset:"));
+        JTextField yField = new JTextField("0");
+        panel.add(yField);
+        
+        panel.add(new JLabel("Z offset:"));
+        JTextField zField = new JTextField("0");
+        panel.add(zField);
+        
+        int result = JOptionPane.showConfirmDialog(this, panel, "Translate Polygons", 
+            JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        
+        if (result == JOptionPane.OK_OPTION) {
+            try {
+                int dx = Integer.parseInt(xField.getText());
+                int dy = Integer.parseInt(yField.getText());
+                int dz = Integer.parseInt(zField.getText());
+                
+                // Find RadMergerGUI
+                Component parent = this;
+                while (parent != null && !(parent instanceof RadMergerGUI)) {
+                    parent = parent.getParent();
+                }
+                
+                if (parent instanceof RadMergerGUI) {
+                    RadMergerGUI gui = (RadMergerGUI) parent;
+                    
+                    // Translate all selected polygons
+                    for (int polyIndex : selectedPolygons) {
+                        gui.updatePolygonTranslationInFile(polyIndex, dx, dy, dz);
+                    }
+                }
+                
+                // Clear selection after operation
+                selectedPolygons.clear();
+                selectionToolbar.clearSelection();
+                repaint();
+                
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this, "Invalid number format", "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    private void goToSelectedPolygonCode() {
+        if (selectedPolygons.isEmpty()) return;
+        
+        int firstPoly = selectedPolygons.iterator().next();
+        goToPolygonCode(firstPoly);
+        
+        // Clear selection after operation
+        selectedPolygons.clear();
+        selectionToolbar.clearSelection();
+        repaint();
+    }
+
+    private void removeSelectedPolygons() {
+        if (selectedPolygons.isEmpty()) return;
+        
+        // Show confirmation
+        int result = JOptionPane.showConfirmDialog(this,
+            "Remove " + selectedPolygons.size() + " polygon(s)? This cannot be undone!",
+            "Confirm Remove",
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.WARNING_MESSAGE);
+        
+        if (result == JOptionPane.YES_OPTION) {
+            // TODO: Implement polygon removal logic
+            JOptionPane.showMessageDialog(this, "Remove polygons - Coming soon!");
+            
+            // Clear selection after operation
+            selectedPolygons.clear();
+            selectionToolbar.clearSelection();
+            repaint();
+        }
+    }
+
+    private boolean isInPaintMode() {
+        // Find the color palette editor and check if paint mode is active
+        Component parent = this;
+        while (parent != null && !(parent instanceof RadMergerGUI)) {
+            parent = parent.getParent();
+        }
+        
+        if (parent instanceof RadMergerGUI) {
+            RadMergerGUI gui = (RadMergerGUI) parent;
+            ColorPaletteEditor editor = gui.getColorPaletteEditor();
+            return editor != null && editor.isVisible() && editor.isPaintModeActive();
+        }
+        return false;
+    }
+
+    private void paintPolygon(int polyIndex) {
+        // Find the color palette editor and get the paint color
+        Component parent = this;
+        while (parent != null && !(parent instanceof RadMergerGUI)) {
+            parent = parent.getParent();
+        }
+        
+        if (parent instanceof RadMergerGUI) {
+            RadMergerGUI gui = (RadMergerGUI) parent;
+            ColorPaletteEditor editor = gui.getColorPaletteEditor();
+            
+            if (editor != null && editor.isPaintModeActive()) {
+                Color paintColor = editor.getPaintColor();
+                changePolygonColorDirect(polyIndex, paintColor);
+                repaint();
+            }
+        }
+    }
+
+    public void hideToolbar() {
+        selectedPolygons.clear();
+        selectionToolbar.clearSelection();
+        repaint();
+    }
 }

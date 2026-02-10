@@ -38,7 +38,7 @@ public class RadMergerGUI extends JFrame {
     public RadMergerGUI() {
         setTitle("RAD File Merger & Viewer");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1280, 1024);
+        setSize(1320, 1024);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(10, 10));
 
@@ -117,6 +117,8 @@ public class RadMergerGUI extends JFrame {
 
         wheelViewer = new Rad3DViewer();
         wheelViewer.setWheelViewer(true); 
+        wheelViewer.setPreferredSize(new Dimension(240, 240));
+        
         wheelViewerContainer.add(wheelViewer, BorderLayout.CENTER);
 
         wheelPanel.add(wheelViewerContainer);
@@ -1890,4 +1892,237 @@ public class RadMergerGUI extends JFrame {
             ex.printStackTrace();
         }
     }
+
+    public void goToPolygonInEditor(int polyIndex) {
+        if (mergedFilePath == null) {
+            JOptionPane.showMessageDialog(this, "No file loaded.", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        
+        String content = radTextArea.getText();
+        String[] lines = content.split("\n");
+        
+        int currentPoly = -1;
+        int targetLine = -1;
+        boolean inPoly = false;
+        
+        for (int i = 0; i < lines.length; i++) {
+            String trimmed = lines[i].trim();
+            
+            if (trimmed.startsWith("<p>")) {
+                inPoly = true;
+                currentPoly++;
+                
+                if (currentPoly == polyIndex) {
+                    targetLine = i;
+                    break;
+                }
+            }
+            
+            if (trimmed.startsWith("</p>")) {
+                inPoly = false;
+            }
+        }
+        
+        if (targetLine != -1) {
+            // Switch to editor tab
+            tabbedPane.setSelectedIndex(1);
+            
+            // Calculate character position
+            int charPos = 0;
+            for (int i = 0; i < targetLine; i++) {
+                charPos += lines[i].length() + 1; // +1 for newline
+            }
+            
+            // Select the line
+            radTextArea.setCaretPosition(charPos);
+            radTextArea.requestFocus();
+            
+            // Scroll to make it visible
+            try {
+                radTextArea.scrollRectToVisible(radTextArea.modelToView(charPos));
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+            
+            JOptionPane.showMessageDialog(this, 
+                "Jumped to polygon " + polyIndex + " at line " + (targetLine + 1), 
+                "Success", 
+                JOptionPane.INFORMATION_MESSAGE);
+        } else {
+            JOptionPane.showMessageDialog(this, 
+                "Could not find polygon " + polyIndex + " in file.", 
+                "Error", 
+                JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    public void updatePolygonColorInFile(int polyIndex, Color newColor, int scheme) {
+        if (mergedFilePath == null) return;
+        
+        try {
+            String content = radTextArea.getText();
+            String[] lines = content.split("\n");
+            StringBuilder result = new StringBuilder();
+            
+            String colorTag = "";
+            switch (scheme) {
+                case 0: colorTag = "c("; break;
+                case 1: colorTag = "c1("; break;
+                case 2: colorTag = "c2("; break;
+            }
+            
+            int currentPoly = -1;
+            boolean inPoly = false;
+            boolean inWheelModel = false;
+            
+            for (String line : lines) {
+                String trimmed = line.trim();
+                
+                // Track wheelModel blocks
+                if (trimmed.startsWith("<wheelModel(")) {
+                    inWheelModel = true;
+                } else if (trimmed.startsWith("</wheelModel>")) {
+                    inWheelModel = false;
+                }
+                
+                // Only count body polygons (not wheel model polygons)
+                if (!inWheelModel && trimmed.startsWith("<p>")) {
+                    inPoly = true;
+                    currentPoly++;
+                }
+                
+                if (!inWheelModel && trimmed.startsWith("</p>")) {
+                    inPoly = false;
+                }
+                
+                // Update color if we're in the target polygon
+                if (inPoly && currentPoly == polyIndex && trimmed.startsWith(colorTag)) {
+                    String indent = line.substring(0, line.indexOf(colorTag.charAt(0)));
+                    result.append(indent).append(String.format("%s%d,%d,%d)\n",
+                        colorTag, newColor.getRed(), newColor.getGreen(), newColor.getBlue()));
+                    continue;
+                }
+                
+                result.append(line).append("\n");
+            }
+            
+            radTextArea.setText(result.toString());
+            Files.write(Paths.get(mergedFilePath), result.toString().getBytes());
+            
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, 
+                "Error updating color: " + ex.getMessage(), 
+                "Error", 
+                JOptionPane.ERROR_MESSAGE);
+            ex.printStackTrace();
+        }
+    }
+
+    public void updatePolygonTranslationInFile(int polyIndex, int dx, int dy, int dz) {
+        if (mergedFilePath == null) return;
+        
+        try {
+            String content = radTextArea.getText();
+            String[] lines = content.split("\n");
+            StringBuilder result = new StringBuilder();
+            
+            int currentPoly = -1;
+            boolean inPoly = false;
+            boolean inWheelModel = false;
+            
+            for (String line : lines) {
+                String trimmed = line.trim();
+                
+                // Track wheelModel blocks
+                if (trimmed.startsWith("<wheelModel(")) {
+                    inWheelModel = true;
+                } else if (trimmed.startsWith("</wheelModel>")) {
+                    inWheelModel = false;
+                }
+                
+                // Only count body polygons
+                if (!inWheelModel && trimmed.startsWith("<p>")) {
+                    inPoly = true;
+                    currentPoly++;
+                }
+                
+                if (!inWheelModel && trimmed.startsWith("</p>")) {
+                    inPoly = false;
+                }
+                
+                // Update vertex positions if we're in the target polygon
+                if (inPoly && currentPoly == polyIndex && trimmed.startsWith("p(")) {
+                    try {
+                        int start = trimmed.indexOf('(') + 1;
+                        int end = trimmed.indexOf(')');
+                        String params = trimmed.substring(start, end);
+                        String[] values = params.split(",");
+                        
+                        int x = Integer.parseInt(values[0].trim()) + dx;
+                        int y = Integer.parseInt(values[1].trim()) + dy;
+                        int z = Integer.parseInt(values[2].trim()) + dz;
+                        
+                        String indent = line.substring(0, line.indexOf('p'));
+                        result.append(indent).append(String.format("p(%d,%d,%d)\n", x, y, z));
+                        continue;
+                    } catch (Exception e) {
+                        // If parsing fails, keep original line
+                    }
+                }
+                
+                result.append(line).append("\n");
+            }
+            
+            radTextArea.setText(result.toString());
+            Files.write(Paths.get(mergedFilePath), result.toString().getBytes());
+            
+            // Reload viewer to show changes
+            viewer.loadRadFile(mergedFilePath);
+            viewerContainer.revalidate();
+            viewerContainer.repaint();
+            
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, 
+                "Error updating translation: " + ex.getMessage(), 
+                "Error", 
+                JOptionPane.ERROR_MESSAGE);
+            ex.printStackTrace();
+        }
+    }
+
+    private JPanel compactColorEditorOverlay = null;
+
+    public void showCompactColorEditor(JPanel overlay) {
+        if (compactColorEditorOverlay != null) {
+            viewerContainer.remove(compactColorEditorOverlay);
+        }
+        
+        compactColorEditorOverlay = overlay;
+        
+        // Add to the layered pane at highest layer
+        Component layeredPane = viewerContainer.getComponent(0); // The JLayeredPane
+        if (layeredPane instanceof JLayeredPane) {
+            JLayeredPane lp = (JLayeredPane) layeredPane;
+            overlay.setBounds(0, 0, 1024, 768);
+            lp.add(overlay, JLayeredPane.MODAL_LAYER);
+            lp.revalidate();
+            lp.repaint();
+        }
+    }
+
+    public void removeCompactColorEditor(JPanel overlay) {
+        Component layeredPane = viewerContainer.getComponent(0);
+        if (layeredPane instanceof JLayeredPane) {
+            JLayeredPane lp = (JLayeredPane) layeredPane;
+            lp.remove(overlay);
+            lp.revalidate();
+            lp.repaint();
+        }
+        compactColorEditorOverlay = null;
+    }
+
+    public ColorPaletteEditor getColorPaletteEditor() {
+    return colorPaletteEditor;
+}
 }
