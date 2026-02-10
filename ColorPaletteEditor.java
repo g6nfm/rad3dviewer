@@ -17,6 +17,7 @@ public class ColorPaletteEditor extends JPanel {
     private boolean paintMode = false;
     private Color paintColor = null;
     private JButton paintModeBtn;
+    private JButton closePaintBtn;
     
     private JPanel colorGridPanel;
     private JPanel editorPanel;
@@ -25,6 +26,12 @@ public class ColorPaletteEditor extends JPanel {
     private JTextField rgbField;
     private JPanel colorPreview;
     private JComboBox<String> schemeSelector;
+
+    private JSlider paintHueSlider;
+    private JSlider paintSatSlider;
+    private JSlider paintBrightSlider;
+    private JPanel paintBrushPanel;
+    private JPanel paintColorPreview;
     
     public ColorPaletteEditor(Rad3DViewer viewer) {
         this.viewer = viewer;
@@ -81,7 +88,19 @@ public class ColorPaletteEditor extends JPanel {
     paintModeBtn = new JButton("Paint Mode: OFF");
     paintModeBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
     paintModeBtn.addActionListener(e -> togglePaintMode());
-    headerPanel.add(paintModeBtn, BorderLayout.EAST);
+
+    closePaintBtn = new JButton("Close");
+    closePaintBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+    closePaintBtn.addActionListener(e -> setVisible(false));
+
+    // Put both buttons in a panel
+    JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+    buttonsPanel.setOpaque(false);
+    buttonsPanel.add(paintModeBtn);
+    buttonsPanel.add(closePaintBtn);
+
+    headerPanel.add(buttonsPanel, BorderLayout.EAST);
+
 
     controlPanel.add(headerPanel);
     controlPanel.add(Box.createVerticalStrut(10));
@@ -123,7 +142,7 @@ public class ColorPaletteEditor extends JPanel {
         // REMOVE this line that limits the height:
         // colorGridPanel.setMaximumSize(new Dimension(750, 100));
         // REPLACE with:
-        colorGridPanel.setPreferredSize(new Dimension(750, 80)); // Initial size
+        colorGridPanel.setPreferredSize(new Dimension(750, 100)); // Initial size
         colorGridPanel.setMaximumSize(new Dimension(750, 300)); // Allow expansion up to 300px
 
         JLabel gridLabel = new JLabel("Click a color to edit:");
@@ -132,13 +151,7 @@ public class ColorPaletteEditor extends JPanel {
         controlPanel.add(gridLabel);
         controlPanel.add(Box.createVerticalStrut(3));
 
-        // Wrap colorGridPanel in a JScrollPane for very large color counts
-        JScrollPane colorScroll = new JScrollPane(colorGridPanel);
-        colorScroll.setOpaque(false);
-        colorScroll.getViewport().setOpaque(false);
-        colorScroll.setBorder(null);
-        colorScroll.setMaximumSize(new Dimension(780, 150)); // Scrollable area
-        controlPanel.add(colorScroll);
+        controlPanel.add(colorGridPanel);
         
         // Editor panel (hidden until color selected)
         editorPanel = new JPanel();
@@ -247,19 +260,138 @@ public class ColorPaletteEditor extends JPanel {
         controlPanel.add(Box.createVerticalStrut(0));  // LESS SPACE since close is now inside
     }
 
+    private void createPaintBrushPanel() {
+        paintBrushPanel = new JPanel();
+        paintBrushPanel.setLayout(new BoxLayout(paintBrushPanel, BoxLayout.Y_AXIS));
+        paintBrushPanel.setOpaque(false);
+        paintBrushPanel.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
+        
+        // Title
+        JLabel brushLabel = new JLabel("Paint Brush Color");
+        brushLabel.setForeground(Color.WHITE);
+        brushLabel.setFont(new Font("SansSerif", Font.BOLD, 14));
+        brushLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        paintBrushPanel.add(brushLabel);
+        paintBrushPanel.add(Box.createVerticalStrut(8));
+        
+        // Horizontal layout: preview LEFT, sliders RIGHT
+        JPanel contentPanel = new JPanel(new BorderLayout(15, 0));
+        contentPanel.setOpaque(false);
+        contentPanel.setMaximumSize(new Dimension(600, 120));
+        
+        // SQUARE preview
+        paintColorPreview = new JPanel();
+        paintColorPreview.setPreferredSize(new Dimension(100, 100));
+        paintColorPreview.setMinimumSize(new Dimension(100, 100));
+        paintColorPreview.setMaximumSize(new Dimension(100, 100));
+        paintColorPreview.setBackground(Color.RED);
+        paintColorPreview.setBorder(BorderFactory.createLineBorder(Color.WHITE, 2));
+        contentPanel.add(paintColorPreview, BorderLayout.WEST);
+        
+        // Sliders panel
+        JPanel slidersPanel = new JPanel();
+        slidersPanel.setLayout(new BoxLayout(slidersPanel, BoxLayout.Y_AXIS));
+        slidersPanel.setOpaque(false);
+        
+        // Hue
+        paintHueSlider = new JSlider(0, 360, 0);
+        paintHueSlider.setOpaque(false);
+        paintHueSlider.setUI(new javax.swing.plaf.metal.MetalSliderUI() {
+            @Override
+            public void paintTrack(Graphics g) {
+                Graphics2D g2d = (Graphics2D) g;
+                int width = trackRect.width;
+                int height = trackRect.height;
+                float[] fractions = {0.0f, 0.16f, 0.33f, 0.5f, 0.66f, 0.83f, 1.0f};
+                Color[] colors = {Color.RED, Color.YELLOW, Color.GREEN, Color.CYAN, Color.BLUE, Color.MAGENTA, Color.RED};
+                LinearGradientPaint gradient = new LinearGradientPaint(trackRect.x, trackRect.y, trackRect.x + width, trackRect.y, fractions, colors);
+                g2d.setPaint(gradient);
+                g2d.fillRect(trackRect.x, trackRect.y + height/2 - 2, width, 4);
+            }
+        });
+        paintHueSlider.addChangeListener(e -> {
+            updatePaintColorFromSliders();
+            paintSatSlider.repaint();
+        });
+        slidersPanel.add(createSliderPanel("Hue:", paintHueSlider));
+        slidersPanel.add(Box.createVerticalStrut(5));
+        
+        // Saturation
+        paintSatSlider = new JSlider(0, 100, 100);
+        paintSatSlider.setOpaque(false);
+        paintSatSlider.setUI(new javax.swing.plaf.metal.MetalSliderUI() {
+            @Override
+            public void paintTrack(Graphics g) {
+                Graphics2D g2d = (Graphics2D) g;
+                int width = trackRect.width;
+                int height = trackRect.height;
+                float currentHue = paintHueSlider.getValue() / 360f;
+                Color fullSat = Color.getHSBColor(currentHue, 1.0f, 1.0f);
+                Color noSat = Color.getHSBColor(currentHue, 0.0f, 1.0f);
+                GradientPaint gradient = new GradientPaint(trackRect.x, trackRect.y, noSat, trackRect.x + width, trackRect.y, fullSat);
+                g2d.setPaint(gradient);
+                g2d.fillRect(trackRect.x, trackRect.y + height/2 - 2, width, 4);
+            }
+        });
+        paintSatSlider.addChangeListener(e -> updatePaintColorFromSliders());
+        slidersPanel.add(createSliderPanel("Saturation:", paintSatSlider));
+        slidersPanel.add(Box.createVerticalStrut(5));
+        
+        // Brightness
+        paintBrightSlider = new JSlider(0, 100, 100);
+        paintBrightSlider.setOpaque(false);
+        paintBrightSlider.setUI(new javax.swing.plaf.metal.MetalSliderUI() {
+            @Override
+            public void paintTrack(Graphics g) {
+                Graphics2D g2d = (Graphics2D) g;
+                int width = trackRect.width;
+                int height = trackRect.height;
+                GradientPaint gradient = new GradientPaint(trackRect.x, trackRect.y, Color.BLACK, trackRect.x + width, trackRect.y, Color.WHITE);
+                g2d.setPaint(gradient);
+                g2d.fillRect(trackRect.x, trackRect.y + height/2 - 2, width, 4);
+            }
+        });
+        paintBrightSlider.addChangeListener(e -> updatePaintColorFromSliders());
+        slidersPanel.add(createSliderPanel("Brightness:", paintBrightSlider));
+        
+        contentPanel.add(slidersPanel, BorderLayout.CENTER);
+        paintBrushPanel.add(contentPanel);
+        paintBrushPanel.setVisible(false);
+    }
+
+    private void updatePaintColorFromSliders() {
+        float h = paintHueSlider.getValue() / 360.0f;
+        float s = paintSatSlider.getValue() / 100.0f;
+        float b = paintBrightSlider.getValue() / 100.0f;
+        paintColor = Color.getHSBColor(h, s, b);
+        updatePaintColorPreview();
+    }
+
+    private void updatePaintColorPreview() {
+        if (paintColorPreview != null && paintColor != null) {
+            paintColorPreview.setBackground(paintColor);
+        }
+    }
+
     private void togglePaintMode() {
         paintMode = !paintMode;
         
         if (paintMode) {
             paintModeBtn.setText("Paint Mode: ON");
-            paintModeBtn.setBackground(new Color(100, 200, 100));  // Green when active
+            paintModeBtn.setBackground(new Color(100, 200, 100));
             
-            // Hide toolbar when paint mode is on
+            // Show paint brush controls
+            if (paintBrushPanel == null) {
+                createPaintBrushPanel();
+                controlPanel.add(paintBrushPanel, controlPanel.getComponentCount() - 1);
+            }
+            paintBrushPanel.setVisible(true);
+            
+            // Hide toolbar
             Component parent = this;
             while (parent != null && !(parent instanceof RadMergerGUI)) {
                 parent = parent.getParent();
             }
-            
             if (parent instanceof RadMergerGUI) {
                 RadMergerGUI gui = (RadMergerGUI) parent;
                 Rad3DViewer viewer = gui.getViewer();
@@ -269,16 +401,20 @@ public class ColorPaletteEditor extends JPanel {
             }
             
             if (paintColor == null) {
-                JOptionPane.showMessageDialog(this, 
-                    "Click a color to select your paint brush color!", 
-                    "Paint Mode", 
-                    JOptionPane.INFORMATION_MESSAGE);
+                paintColor = Color.RED;
+                updatePaintColorPreview();
             }
         } else {
             paintModeBtn.setText("Paint Mode: OFF");
-            paintModeBtn.setBackground(null);  // Default color
+            paintModeBtn.setBackground(null);
             paintColor = null;
+            if (paintBrushPanel != null) {
+                paintBrushPanel.setVisible(false);
+            }
         }
+        
+        controlPanel.revalidate();
+        controlPanel.repaint();
     }
     
     private JSlider createSlider(String label, int min, int max) {
@@ -1023,7 +1159,7 @@ public class ColorPaletteEditor extends JPanel {
         gbc.gridx = 0;
         gbc.gridy = 0;
         gbc.anchor = GridBagConstraints.NORTH;
-        gbc.insets = new Insets(-350, 0, 0, 0);  // Same positioning as main editor
+        gbc.insets = new Insets(-275, 0, 0, 0);  // Same positioning as main editor
         overlay.add(mainPanel, gbc);
         
         // Add overlay to GUI

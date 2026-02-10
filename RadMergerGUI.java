@@ -124,7 +124,15 @@ public class RadMergerGUI extends JFrame {
         wheelPanel.add(wheelViewerContainer);
 
         // 1. ADD THE BUTTON - Right after wheelPanel.add(wheelViewerContainer); around line 87
-        wheelPanel.add(wheelViewerContainer);
+        //wheelPanel.add(wheelViewerContainer);
+
+        // ADD THIS - Import Wheel Code button
+        JButton importWheelBtn = new JButton("Import Wheel Code");
+        importWheelBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        importWheelBtn.setMaximumSize(new Dimension(220, 35));
+        importWheelBtn.addActionListener(e -> importWheelCode());
+        wheelPanel.add(Box.createVerticalStrut(10));
+        wheelPanel.add(importWheelBtn);
 
         // ADD THIS:
         JButton applyWheelsBtn = new JButton("Apply Wheels to Car");
@@ -216,16 +224,38 @@ public class RadMergerGUI extends JFrame {
         colorPaletteEditor = new ColorPaletteEditor(viewer);
 
         // Layer them using JLayeredPane
-        JLayeredPane layeredPane = new JLayeredPane();
+        final JLayeredPane layeredPane = new JLayeredPane();
         layeredPane.setPreferredSize(new Dimension(1024, 768));
-
-        viewer.setBounds(0, 0, 1024, 768);
-        wheelAnchorEditor.setBounds(0, 0, 1024, 768);
-        colorPaletteEditor.setBounds(0, 0, 1024, 768);
 
         layeredPane.add(viewer, JLayeredPane.DEFAULT_LAYER);
         layeredPane.add(wheelAnchorEditor, JLayeredPane.PALETTE_LAYER);
         layeredPane.add(colorPaletteEditor, JLayeredPane.PALETTE_LAYER);
+
+        // Add component listener to resize all layers when viewerContainer resizes
+        viewerContainer.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                int w = viewerContainer.getWidth();
+                int h = viewerContainer.getHeight();
+                
+                // Resize layered pane to match container
+                layeredPane.setBounds(0, 0, w, h);
+                layeredPane.setPreferredSize(new Dimension(w, h));
+                
+                // Resize all children to match
+                viewer.setBounds(0, 0, w, h);
+                wheelAnchorEditor.setBounds(0, 0, w, h);
+                colorPaletteEditor.setBounds(0, 0, w, h);
+                
+                layeredPane.revalidate();
+                layeredPane.repaint();
+            }
+        });
+
+        // Set initial bounds
+        viewer.setBounds(0, 0, 1024, 768);
+        wheelAnchorEditor.setBounds(0, 0, 1024, 768);
+        colorPaletteEditor.setBounds(0, 0, 1024, 768);
 
         viewerContainer.add(layeredPane, BorderLayout.CENTER);
 
@@ -233,6 +263,11 @@ public class RadMergerGUI extends JFrame {
         JButton toggleWheelEditorBtn = new JButton("Edit Wheel Anchors");
         toggleWheelEditorBtn.addActionListener(e -> {
             if (viewer.getCarModel() != null) {
+                // Hide toolbar if open
+                if (viewer.isToolbarVisible()) {
+                    viewer.hideToolbar();
+                }
+                
                 wheelAnchorEditor.loadCarModel(viewer.getCarModel(), radTextArea.getText());
                 wheelAnchorEditor.setVisible(!wheelAnchorEditor.isVisible());
                 // Hide color editor when showing wheel editor
@@ -244,10 +279,14 @@ public class RadMergerGUI extends JFrame {
             }
         });
 
-        // ADD THIS BUTTON:
         JButton toggleColorEditorBtn = new JButton("Edit Colors");
         toggleColorEditorBtn.addActionListener(e -> {
             if (mergedFilePath != null) {
+                // Hide toolbar if open
+                if (viewer.isToolbarVisible()) {
+                    viewer.hideToolbar();
+                }
+                
                 colorPaletteEditor.loadCarColors(radTextArea.getText());
                 colorPaletteEditor.setVisible(!colorPaletteEditor.isVisible());
                 // Hide wheel editor when showing color editor
@@ -1425,6 +1464,8 @@ public class RadMergerGUI extends JFrame {
         }
     }
 
+    
+
     private void importCarCode() {
         // Ask for car name
         String carName = JOptionPane.showInputDialog(
@@ -1508,6 +1549,98 @@ public class RadMergerGUI extends JFrame {
             JOptionPane.showMessageDialog(
                 this,
                 "Error importing car:\n" + ex.getMessage(),
+                "Error",
+                JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }
+
+    private void importWheelCode() {
+        // Ask for wheel name
+        String wheelName = JOptionPane.showInputDialog(
+            this,
+            "Enter name for the imported wheel (without .rad):",
+            "Import Wheel Code",
+            JOptionPane.PLAIN_MESSAGE
+        );
+        
+        if (wheelName == null || wheelName.trim().isEmpty()) {
+            return;
+        }
+        
+        wheelName = wheelName.trim();
+        File wheelsFolder = new File("wheels");
+        if (!wheelsFolder.exists()) {
+            wheelsFolder.mkdirs();
+        }
+        File newWheelFile = new File(wheelsFolder, wheelName + ".rad");
+        
+        // Check if file already exists
+        if (newWheelFile.exists()) {
+            int result = JOptionPane.showConfirmDialog(
+                this,
+                "A wheel with this name already exists. Overwrite?",
+                "File Exists",
+                JOptionPane.YES_NO_OPTION
+            );
+            if (result != JOptionPane.YES_OPTION) return;
+        }
+        
+        // Ask if this is for NFM G6 (auto-generate color schemes)
+        int nfmG6 = JOptionPane.showConfirmDialog(
+            this,
+            "Is this wheel for NFM G6?\n(This will auto-generate c1() and c2() color schemes for all polygons)",
+            "NFM G6 Support",
+            JOptionPane.YES_NO_OPTION
+        );
+        
+        boolean generateColorSchemes = (nfmG6 == JOptionPane.YES_OPTION);
+        
+        // Show text area for pasting code
+        JTextArea importArea = new JTextArea(20, 50);
+        importArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        JScrollPane scrollPane = new JScrollPane(importArea);
+        
+        int result = JOptionPane.showConfirmDialog(
+            this,
+            scrollPane,
+            "Paste wheel code here:",
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.PLAIN_MESSAGE
+        );
+        
+        if (result != JOptionPane.OK_OPTION) return;
+        
+        String wheelCode = importArea.getText().trim();
+        
+        if (wheelCode.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No code was pasted!", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        
+        // Process the code to add c1() and c2() if needed
+        if (generateColorSchemes) {
+            wheelCode = addColorSchemes(wheelCode);
+        }
+        
+        try {
+            Files.write(newWheelFile.toPath(), wheelCode.getBytes());
+            
+            JOptionPane.showMessageDialog(
+                this,
+                "Wheel imported successfully: " + wheelName + ".rad" + 
+                (generateColorSchemes ? "\nWith color schemes auto-generated!" : ""),
+                "Success",
+                JOptionPane.INFORMATION_MESSAGE
+            );
+            
+            // Refresh wheel list
+            refreshWheelDropdown();
+            
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Error importing wheel:\n" + ex.getMessage(),
                 "Error",
                 JOptionPane.ERROR_MESSAGE
             );

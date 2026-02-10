@@ -49,62 +49,48 @@ public class Rad3DViewer extends JPanel
     medium = new Medium();
 
     // Create layered pane for overlay
-    JLayeredPane layeredPane = new JLayeredPane();
+    final JLayeredPane layeredPane = new JLayeredPane();
     layeredPane.setPreferredSize(new Dimension(1024, 768));
-    
+
     drawingPanel = new DrawingPanel();
     drawingPanel.setOpaque(false);
-    drawingPanel.setBounds(0, 0, 1024, 768);
-    
+
     selectionToolbar = new SelectionToolbar();
 
+    // Add component listener to THIS panel (Rad3DViewer) to resize children
+    addComponentListener(new ComponentAdapter() {
+        @Override
+        public void componentResized(ComponentEvent e) {
+            int w = getWidth();
+            int h = getHeight();
+            
+            // Resize layered pane to match parent
+            layeredPane.setBounds(0, 0, w, h);
+            
+            // Resize drawing panel to fill entire space
+            drawingPanel.setBounds(0, 0, w, h);
+            
+            // Center toolbar
+            int toolbarWidth = 950;
+            int centerX = (w - toolbarWidth) / 2;
+            selectionToolbar.setBounds(centerX, 0, toolbarWidth, 50);
+            
+            // Trigger repaint to recenter car
+            repaint();
+        }
+    });
 
+    // Set initial bounds
+    drawingPanel.setBounds(0, 0, 1024, 768);
     int toolbarWidth = 950;
     int centerX = (1024 - toolbarWidth) / 2;
     selectionToolbar.setBounds(centerX, 0, toolbarWidth, 50);
 
-
-
-    //selectionToolbar.setBounds(0, 0, 900, 50);  // Make sure width matches viewer width
-    
-    // Setup toolbar actions
-    selectionToolbar.setChangeColorAction(() -> changeSelectedPolygonsColor());
-    selectionToolbar.setTranslateAction(() -> translateSelectedPolygons());
-    selectionToolbar.setGoToCodeAction(() -> goToSelectedPolygonCode());
-    selectionToolbar.setRemoveAction(() -> removeSelectedPolygons());
-    selectionToolbar.setCloseAction(() -> {
-        selectedPolygons.clear();
-        selectionToolbar.clearSelection();
-        repaint();
-    });
-    
     // Add to layered pane
     layeredPane.add(drawingPanel, JLayeredPane.DEFAULT_LAYER);
     layeredPane.add(selectionToolbar, JLayeredPane.PALETTE_LAYER);
-    
+
     add(layeredPane, BorderLayout.CENTER);
-
-    JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 5));
-        JButton btnOriginal = new JButton("Original");
-        btnOriginal.addActionListener(e -> {
-            colorScheme = 0;
-            repaint();
-        });
-        JButton btnSkin1 = new JButton("Color Scheme 1");
-        btnSkin1.addActionListener(e -> {
-            colorScheme = 1;
-            repaint();
-        });
-        JButton btnSkin2 = new JButton("Color Scheme 2");
-        btnSkin2.addActionListener(e -> {
-            colorScheme = 2;
-            repaint();
-        });
-        buttonPanel.add(btnOriginal);
-        buttonPanel.add(btnSkin1);
-        buttonPanel.add(btnSkin2);
-        add(buttonPanel, BorderLayout.SOUTH);
-
         addMouseListener(this);
         addMouseMotionListener(this);
         addMouseWheelListener(this);
@@ -153,7 +139,7 @@ public class Rad3DViewer extends JPanel
 
             // Use ORIGINAL working position values
             wheelModel.x = 110;
-            wheelModel.y = 100;
+            wheelModel.y = 120;
             wheelModel.z = 400; 
             wheelModel.zy = 0;
             wheelModel.xz = 0;
@@ -193,22 +179,9 @@ public class Rad3DViewer extends JPanel
             Medium.h  = ph;
             Medium.cx = pw / 2;
             Medium.cy = ph / 2;  // ADD THIS LINE
+            Medium.cz = ph / 8;  // Main viewer with zoom
             // Different camera for wheel vs car viewer
-            if (isWheelViewer) {
-                Medium.cx = 0;
-                Medium.cz = 200;  // Fixed camera distance for wheel viewer
-                Medium.cy = 100;
-            } else {
-                Medium.cz = ph / 8 + cameraDistance;  // Main viewer with zoom
-            }
-
-            // ADD THESE DEBUG LINES:
-            if (isWheelViewer) {
-                System.out.println("WHEEL VIEWER: pw=" + pw + ", ph=" + ph + ", Medium.cz=" + Medium.cz);
-                if (wheelModel != null) {
-                    System.out.println("  wheelModel.x=" + wheelModel.x + ", y=" + wheelModel.y + ", z=" + wheelModel.z);
-                }
-            }
+            
 
             // --------------------------
             // ENVIRONMENT PER VIEWER
@@ -565,10 +538,11 @@ public class Rad3DViewer extends JPanel
     @Override
     public void mouseWheelMoved(MouseWheelEvent e) {
         ContO m = getActiveModel();
-        if (m == null) return;
-
+        if (m == null) {
+            return;
+        }
         int notches = e.getWheelRotation();
-        cameraDistance += notches * 20;  // Store zoom offset
+        m.z += notches * 20;  // Store zoom offset
         repaint();
     }
 
@@ -958,5 +932,9 @@ public class Rad3DViewer extends JPanel
         selectedPolygons.clear();
         selectionToolbar.clearSelection();
         repaint();
+    }
+
+    public boolean isToolbarVisible() {
+        return selectionToolbar != null && selectionToolbar.isVisible();
     }
 }
