@@ -343,16 +343,55 @@ public class RadMergerGUI extends JFrame {
         });
 
         btnReplace.addActionListener(e -> {
-            String searchTerm = JOptionPane.showInputDialog(this, "Enter text to find:");
+        // Create a panel with options
+        JPanel panel = new JPanel(new GridLayout(3, 2, 5, 5));
+        
+        JLabel findLabel = new JLabel("Find:");
+        JTextField findField = new JTextField(20);
+        
+        JLabel replaceLabel = new JLabel("Replace with:");
+        JTextField replaceField = new JTextField(20);
+        
+        JCheckBox matchCaseBox = new JCheckBox("Match case");
+        
+        panel.add(findLabel);
+        panel.add(findField);
+        panel.add(replaceLabel);
+        panel.add(replaceField);
+        panel.add(matchCaseBox);
+        panel.add(new JLabel("")); // Empty cell
+        
+        int result = JOptionPane.showConfirmDialog(
+            this,
+            panel,
+            "Find and Replace",
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.PLAIN_MESSAGE
+        );
+        
+        if (result == JOptionPane.OK_OPTION) {
+            String searchTerm = findField.getText();
+            String replaceTerm = replaceField.getText();
+            
             if (searchTerm != null && !searchTerm.isEmpty()) {
-                String replaceTerm = JOptionPane.showInputDialog(this, "Replace with:");
-                if (replaceTerm != null) {
-                    String content = radTextArea.getText();
+                String content = radTextArea.getText();
+                
+                if (matchCaseBox.isSelected()) {
                     content = content.replace(searchTerm, replaceTerm);
-                    radTextArea.setText(content);
+                } else {
+                    // Case-insensitive replace
+                    content = content.replaceAll("(?i)" + java.util.regex.Pattern.quote(searchTerm), 
+                                                java.util.regex.Matcher.quoteReplacement(replaceTerm));
                 }
+                
+                radTextArea.setText(content);
+                JOptionPane.showMessageDialog(this, 
+                    "Replaced all occurrences.", 
+                    "Replace Complete", 
+                    JOptionPane.INFORMATION_MESSAGE);
             }
-        });
+        }
+    });
 
         setVisible(true);
     }
@@ -363,6 +402,63 @@ public class RadMergerGUI extends JFrame {
     
     public Rad3DViewer getViewer() {
         return viewer;
+    }
+
+    public void replaceRimColorInFile(Color oldColor, Color newColor, int scheme) {
+        if (mergedFilePath == null) return;
+        
+        try {
+            String content = radTextArea.getText();
+            String[] lines = content.split("\n");
+            StringBuilder result = new StringBuilder();
+            
+            String rimTag = "";
+            switch (scheme) {
+                case 0: rimTag = "rims("; break;
+                case 1: rimTag = "rims1("; break;
+                case 2: rimTag = "rims2("; break;
+            }
+            
+            for (String line : lines) {
+                String trimmed = line.trim();
+                
+                if (trimmed.startsWith(rimTag)) {
+                    // Parse the rim color
+                    try {
+                        int start = trimmed.indexOf('(') + 1;
+                        int end = trimmed.indexOf(')');
+                        String params = trimmed.substring(start, end);
+                        String[] values = params.split(",");
+                        
+                        int r = Integer.parseInt(values[0].trim());
+                        int g = Integer.parseInt(values[1].trim());
+                        int b = Integer.parseInt(values[2].trim());
+                        
+                        if (r == oldColor.getRed() && g == oldColor.getGreen() && b == oldColor.getBlue()) {
+                            // Replace the rim color but keep the other parameters
+                            String indent = line.substring(0, line.indexOf(rimTag.charAt(0)));
+                            result.append(indent).append(String.format("%s%d,%d,%d,%s,%s)\n",
+                                rimTag, newColor.getRed(), newColor.getGreen(), newColor.getBlue(),
+                                values[3].trim(), values[4].trim()));
+                            continue;
+                        }
+                    } catch (Exception e) {
+                        // Keep original if parsing fails
+                    }
+                }
+                
+                result.append(line).append("\n");
+            }
+            
+            radTextArea.setText(result.toString());
+            Files.write(Paths.get(mergedFilePath), result.toString().getBytes());
+            viewer.loadRadFile(mergedFilePath);
+            viewerContainer.revalidate();
+            viewerContainer.repaint();
+            
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
     }
 
     private void onMerge() {
@@ -571,6 +667,46 @@ public class RadMergerGUI extends JFrame {
             // Read car file
             String carContent = new String(Files.readAllBytes(carFile.toPath()));
             
+            // Count how many wheels the car has
+            int wheelCount = countWheels(carContent);
+            
+            // Ask user: Replace all or custom selection?
+            String[] options = {"Replace All Wheels", "Custom Selection", "Cancel"};
+            int choice = JOptionPane.showOptionDialog(
+                this,
+                "How would you like to apply the wheels?",
+                "Wheel Application",
+                JOptionPane.YES_NO_CANCEL_OPTION,
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                options,
+                options[0]
+            );
+            
+            if (choice == 2 || choice == JOptionPane.CLOSED_OPTION) return; // Cancel
+            
+            boolean replaceAll = (choice == 0);
+            boolean[] selectedWheels = null;
+            
+            if (!replaceAll) {
+                // Show wheel selection dialog
+                selectedWheels = showWheelSelectionDialog(wheelCount);
+                if (selectedWheels == null) return; // User cancelled
+                
+                // Check if any wheels are selected
+                boolean anySelected = false;
+                for (boolean selected : selectedWheels) {
+                    if (selected) {
+                        anySelected = true;
+                        break;
+                    }
+                }
+                if (!anySelected) {
+                    JOptionPane.showMessageDialog(this, "No wheels selected!", "Error", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+            }
+            
             // Read wheel file
             String wheelContent = new String(Files.readAllBytes(wheelFile.toPath()));
             
@@ -581,23 +717,42 @@ public class RadMergerGUI extends JFrame {
                 return;
             }
             
-            // Check if car already has wheel models
-            if (carContent.contains("<wheelModel(")) {
-                int result = JOptionPane.showConfirmDialog(this, 
-                    "This car already has custom wheels. Replace them?", 
-                    "Replace Wheels?", 
-                    JOptionPane.YES_NO_OPTION);
-                if (result != JOptionPane.YES_OPTION) return;
+            if (replaceAll) {
+                // Original behavior: replace all wheels
+                if (carContent.contains("<wheelModel(")) {
+                    int result = JOptionPane.showConfirmDialog(this, 
+                        "This car already has custom wheels. Replace them?", 
+                        "Replace Wheels?", 
+                        JOptionPane.YES_NO_OPTION);
+                    if (result != JOptionPane.YES_OPTION) return;
+                    
+                    carContent = removeAllWheelModels(carContent);
+                }
                 
-                // Remove existing wheel models
-                carContent = removeAllWheelModels(carContent);
+                carContent = convertWheelCallsTo7Args(carContent);
+                carContent = appendWheelModel(carContent, wheelModel);
+                
+            } else {
+                // Custom selection: check if selected wheels already have model IDs
+                int existingModelId = getExistingModelIdForWheels(carContent, selectedWheels);
+                
+                if (existingModelId >= 0) {
+                    // Replace existing wheel model
+                    carContent = replaceWheelModel(carContent, existingModelId, wheelModel);
+                } else {
+                    // Create new wheel model
+                    int nextModelId = getNextWheelModelId(carContent);
+                    
+                    // Update the wheel model to use the new ID
+                    wheelModel = wheelModel.replace("<wheelModel(0)>", "<wheelModel(" + nextModelId + ")>");
+                    
+                    // Convert selected wheels to use the new model ID
+                    carContent = convertSelectedWheelsTo7Args(carContent, selectedWheels, nextModelId);
+                    
+                    // Append the new wheel model
+                    carContent = appendWheelModel(carContent, wheelModel);
+                }
             }
-            
-            // Convert 6-arg w() calls to 7-arg
-            carContent = convertWheelCallsTo7Args(carContent);
-            
-            // Append wheel model before the last wheel definition line
-            carContent = appendWheelModel(carContent, wheelModel);
             
             // Save modified car file
             Files.write(carFile.toPath(), carContent.getBytes());
@@ -618,6 +773,75 @@ public class RadMergerGUI extends JFrame {
                 JOptionPane.ERROR_MESSAGE);
             ex.printStackTrace();
         }
+    }
+
+    private int getExistingModelIdForWheels(String content, boolean[] selectedWheels) {
+        String[] lines = content.split("\n");
+        int wheelIndex = 0;
+        boolean insideWheelModel = false;
+        int foundModelId = -1;
+        
+        for (String line : lines) {
+            String trimmed = line.trim();
+            
+            if (trimmed.startsWith("<wheelModel(")) {
+                insideWheelModel = true;
+            } else if (trimmed.startsWith("</wheelModel>")) {
+                insideWheelModel = false;
+            }
+            
+            if (!insideWheelModel && trimmed.startsWith("w(")) {
+                if (wheelIndex < selectedWheels.length && selectedWheels[wheelIndex]) {
+                    // Check if this wheel has a model ID
+                    int commaCount = 0;
+                    for (char c : trimmed.toCharArray()) {
+                        if (c == ',') commaCount++;
+                    }
+                    
+                    if (commaCount == 6) {
+                        // 7-arg format, get the model ID
+                        try {
+                            int start = trimmed.indexOf('(') + 1;
+                            int end = trimmed.indexOf(')');
+                            String params = trimmed.substring(start, end);
+                            String[] values = params.split(",");
+                            int modelId = Integer.parseInt(values[6].trim());
+                            
+                            if (foundModelId == -1) {
+                                foundModelId = modelId;
+                            } else if (foundModelId != modelId) {
+                                // Multiple different model IDs selected - return -1 to create new
+                                return -1;
+                            }
+                        } catch (Exception e) {
+                            // Parse error
+                        }
+                    }
+                }
+                wheelIndex++;
+            }
+        }
+        
+        return foundModelId;
+    }
+
+    private String replaceWheelModel(String content, int modelId, String newWheelModel) {
+        // Find and replace the wheelModel block with this ID
+        String searchTag = "<wheelModel(" + modelId + ")>";
+        int start = content.indexOf(searchTag);
+        
+        if (start == -1) return content; // Model not found
+        
+        int end = content.indexOf("</wheelModel>", start);
+        if (end == -1) return content;
+        
+        // Replace with new wheel model (update ID in new model)
+        newWheelModel = newWheelModel.replace("<wheelModel(0)>", searchTag);
+        
+        String before = content.substring(0, start);
+        String after = content.substring(end + "</wheelModel>".length());
+        
+        return before + newWheelModel + after;
     }
 
     private String extractWheelModel(String content) {
@@ -661,6 +885,172 @@ public class RadMergerGUI extends JFrame {
         }
         
         return wheelModel.toString();
+    }
+
+    private int countWheels(String content) {
+        int count = 0;
+        String[] lines = content.split("\n");
+        boolean insideWheelModel = false;
+        
+        for (String line : lines) {
+            String trimmed = line.trim();
+            
+            if (trimmed.startsWith("<wheelModel(")) {
+                insideWheelModel = true;
+            } else if (trimmed.startsWith("</wheelModel>")) {
+                insideWheelModel = false;
+            }
+            
+            if (!insideWheelModel && trimmed.startsWith("w(")) {
+                count++;
+            }
+        }
+        
+        return count;
+    }
+
+    private boolean[] showWheelSelectionDialog(int wheelCount) {
+        // Group wheels by axle (pairs based on position)
+        int axleCount = wheelCount / 2;
+        
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        
+        JLabel instruction = new JLabel("Select which axles to replace:");
+        panel.add(instruction);
+        panel.add(Box.createVerticalStrut(10));
+        
+        JCheckBox[] axleCheckboxes = new JCheckBox[axleCount];
+        String[] axleNames = {"Front Axle", "Middle Axle 1", "Middle Axle 2", "Rear Axle"};
+        
+        for (int i = 0; i < axleCount; i++) {
+            String name;
+            if (i == 0) {
+                name = "Front Axle";
+            } else if (i == axleCount - 1) {
+                name = "Rear Axle";
+            } else {
+                name = "Middle Axle " + i;
+            }
+            
+            axleCheckboxes[i] = new JCheckBox(name);
+            panel.add(axleCheckboxes[i]);
+        }
+        
+        int result = JOptionPane.showConfirmDialog(
+            this, 
+            panel, 
+            "Select Axles", 
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.PLAIN_MESSAGE
+        );
+        
+        if (result != JOptionPane.OK_OPTION) return null;
+        
+        // Convert axle selection to wheel selection
+        // Each axle has 2 wheels (left and right)
+        boolean[] selectedWheels = new boolean[wheelCount];
+        for (int i = 0; i < axleCount; i++) {
+            if (axleCheckboxes[i].isSelected()) {
+                selectedWheels[i * 2] = true;      // Left wheel
+                selectedWheels[i * 2 + 1] = true;  // Right wheel
+            }
+        }
+        
+        return selectedWheels;
+    }
+
+    private int getNextWheelModelId(String content) {
+        int maxId = -1;
+        String[] lines = content.split("\n");
+        
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("<wheelModel(")) {
+                try {
+                    int start = trimmed.indexOf('(') + 1;
+                    int end = trimmed.indexOf(')');
+                    int id = Integer.parseInt(trimmed.substring(start, end).trim());
+                    if (id > maxId) maxId = id;
+                } catch (Exception e) {
+                    // Ignore parse errors
+                }
+            }
+        }
+        
+        return maxId + 1;
+    }
+
+    private String convertSelectedWheelsTo7Args(String content, boolean[] selectedWheels, int modelId) {
+        String[] lines = content.split("\n");
+        StringBuilder result = new StringBuilder();
+        int wheelIndex = 0;
+        boolean insideWheelModel = false;
+        
+        for (String line : lines) {
+            String trimmed = line.trim();
+            
+            if (trimmed.startsWith("<wheelModel(")) {
+                insideWheelModel = true;
+            } else if (trimmed.startsWith("</wheelModel>")) {
+                insideWheelModel = false;
+            }
+            
+            if (!insideWheelModel && trimmed.startsWith("w(")) {
+                // Check if this wheel is selected
+                if (wheelIndex < selectedWheels.length && selectedWheels[wheelIndex]) {
+                    // Convert this wheel to 7-arg with the new model ID
+                    int commaCount = 0;
+                    for (char c : trimmed.toCharArray()) {
+                        if (c == ',') commaCount++;
+                    }
+                    
+                    if (commaCount == 5) {
+                        // 6-arg format, convert to 7-arg
+                        int start = trimmed.indexOf('(') + 1;
+                        int end = trimmed.indexOf(')');
+                        String params = trimmed.substring(start, end);
+                        String[] values = params.split(",");
+                        
+                        int x = Integer.parseInt(values[0].trim());
+                        int width = Integer.parseInt(values[4].trim());
+                        
+                        if (x < 0) {
+                            values[4] = String.valueOf(Math.abs(width));
+                        } else {
+                            values[4] = String.valueOf(-Math.abs(width));
+                        }
+                        
+                        String indent = line.substring(0, line.indexOf('w'));
+                        String newLine = indent + "w(" + String.join(",", values) + "," + modelId + ")";
+                        result.append(newLine).append("\n");
+                        wheelIndex++;
+                        continue;
+                    } else if (commaCount == 6) {
+                        // Already 7-arg, just update the model ID
+                        int start = trimmed.indexOf('(') + 1;
+                        int end = trimmed.indexOf(')');
+                        String params = trimmed.substring(start, end);
+                        String[] values = params.split(",");
+                        
+                        values[6] = String.valueOf(modelId);
+                        
+                        String indent = line.substring(0, line.indexOf('w'));
+                        String newLine = indent + "w(" + String.join(",", values) + ")";
+                        result.append(newLine).append("\n");
+                        wheelIndex++;
+                        continue;
+                    }
+                }
+                
+                // Not selected or couldn't process - keep as-is
+                wheelIndex++;
+            }
+            
+            result.append(line).append("\n");
+        }
+        
+        return result.toString();
     }
 
     private String addColorSchemesToPolygon(String polygonBlock) {

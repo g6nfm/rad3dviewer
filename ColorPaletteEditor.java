@@ -315,6 +315,82 @@ public class ColorPaletteEditor extends JPanel {
     public void loadCarColors(String fileContent) {
         refreshColorGrid();
     }
+
+    private Color parseRimColor(String line) {
+        try {
+            int start = line.indexOf('(') + 1;
+            int end = line.indexOf(')');
+            String params = line.substring(start, end);
+            String[] values = params.split(",");
+            
+            // rims() has 5 parameters, first 3 are RGB
+            int r = Integer.parseInt(values[0].trim());
+            int g = Integer.parseInt(values[1].trim());
+            int b = Integer.parseInt(values[2].trim());
+            
+            return new Color(r, g, b);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private JPanel createColorBlock(String key, boolean isRim) {
+        String[] rgb = key.split(",");
+        Color color = new Color(
+            Integer.parseInt(rgb[0]),
+            Integer.parseInt(rgb[1]),
+            Integer.parseInt(rgb[2])
+        );
+        
+        JPanel colorBlock = new JPanel();
+        colorBlock.setPreferredSize(new Dimension(40, 40));
+        colorBlock.setBackground(color);
+        colorBlock.setBorder(BorderFactory.createLineBorder(Color.WHITE, 2));
+        colorBlock.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        
+        // Add tooltip showing RGB value
+        colorBlock.setToolTipText(String.format("RGB: (%s)%s", key, isRim ? " - Rim Color" : ""));
+        
+        colorBlock.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (isRim) {
+                    selectRimColor(color);
+                } else {
+                    selectColor(color);
+                }
+            }
+            
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                colorBlock.setBorder(BorderFactory.createLineBorder(Color.YELLOW, 3));
+            }
+            
+            @Override
+            public void mouseExited(MouseEvent e) {
+                colorBlock.setBorder(BorderFactory.createLineBorder(Color.WHITE, 2));
+            }
+        });
+        
+        return colorBlock;
+    }
+
+    private void selectRimColor(Color color) {
+        selectedColor = color;
+        editorPanel.setVisible(true);
+        
+        // Load color into sliders
+        float[] hsb = Color.RGBtoHSB(color.getRed(), color.getGreen(), color.getBlue(), null);
+        hueSlider.setValue((int)(hsb[0] * 360));
+        saturationSlider.setValue((int)(hsb[1] * 100));
+        brightnessSlider.setValue((int)(hsb[2] * 100));
+        
+        colorPreview.setBackground(color);
+        rgbField.setText(String.format("(%d,%d,%d)", color.getRed(), color.getGreen(), color.getBlue()));
+        
+        controlPanel.revalidate();
+        controlPanel.repaint();
+    }
     
     private void refreshColorGrid() {
         uniqueColors.clear();
@@ -325,15 +401,26 @@ public class ColorPaletteEditor extends JPanel {
         
         // Parse colors based on current scheme
         String colorTag = "";
+        String rimTag = "";
         switch (currentScheme) {
-            case 0: colorTag = "c("; break;
-            case 1: colorTag = "c1("; break;
-            case 2: colorTag = "c2("; break;
+            case 0: 
+                colorTag = "c("; 
+                rimTag = "rims(";
+                break;
+            case 1: 
+                colorTag = "c1("; 
+                rimTag = "rims1(";
+                break;
+            case 2: 
+                colorTag = "c2("; 
+                rimTag = "rims2(";
+                break;
         }
         
-        // Count color occurrences for BODY and WHEELS separately
+        // Count color occurrences for BODY, WHEELS, and RIMS separately
         Map<String, Integer> bodyColorCounts = new HashMap<>();
         Map<String, Integer> wheelColorCounts = new HashMap<>();
+        List<Color> rimColors = new ArrayList<>();
         
         String[] lines = fileContent.split("\n");
         boolean inWheelModel = false;
@@ -341,6 +428,14 @@ public class ColorPaletteEditor extends JPanel {
         
         for (String line : lines) {
             String trimmed = line.trim();
+            
+            // Parse rim colors
+            if (trimmed.startsWith(rimTag)) {
+                Color rimColor = parseRimColor(trimmed);
+                if (rimColor != null) {
+                    rimColors.add(rimColor);
+                }
+            }
             
             // Track if we're inside a wheelModel block
             if (trimmed.startsWith("<wheelModel(")) {
@@ -362,10 +457,7 @@ public class ColorPaletteEditor extends JPanel {
                 if (color != null) {
                     String key = colorToKey(color);
                     
-                    // Check if this is a wheel polygon
-                    boolean isWheelPoly = inWheelModel || trimmed.contains("[p]") || 
-                                        (lines[Math.max(0, java.util.Arrays.asList(lines).indexOf(line) - 10)]
-                                        .contains("[p]"));
+                    boolean isWheelPoly = inWheelModel;
                     
                     if (isWheelPoly) {
                         wheelColorCounts.put(key, wheelColorCounts.getOrDefault(key, 0) + 1);
@@ -392,12 +484,11 @@ public class ColorPaletteEditor extends JPanel {
         }
         
         for (Map.Entry<String, Integer> entry : sortedBodyColors) {
-            colorGridPanel.add(createColorBlock(entry.getKey()));
+            colorGridPanel.add(createColorBlock(entry.getKey(), false));
         }
         
         // Add WHEEL colors
         if (!sortedWheelColors.isEmpty()) {
-            // Add spacing
             colorGridPanel.add(Box.createHorizontalStrut(20));
             
             JLabel wheelLabel = new JLabel("Wheels:  ");
@@ -407,7 +498,21 @@ public class ColorPaletteEditor extends JPanel {
         }
         
         for (Map.Entry<String, Integer> entry : sortedWheelColors) {
-            colorGridPanel.add(createColorBlock(entry.getKey()));
+            colorGridPanel.add(createColorBlock(entry.getKey(), false));
+        }
+        
+        // Add RIM colors
+        if (!rimColors.isEmpty()) {
+            colorGridPanel.add(Box.createHorizontalStrut(20));
+            
+            JLabel rimLabel = new JLabel("Rims:  ");
+            rimLabel.setForeground(Color.WHITE);
+            rimLabel.setFont(new Font("SansSerif", Font.BOLD, 11));
+            colorGridPanel.add(rimLabel);
+            
+            for (Color rimColor : rimColors) {
+                colorGridPanel.add(createColorBlock(colorToKey(rimColor), true));
+            }
         }
         
         colorGridPanel.revalidate();
@@ -505,10 +610,44 @@ public class ColorPaletteEditor extends JPanel {
         }
         
         if (parent instanceof RadMergerGUI) {
-            ((RadMergerGUI) parent).replaceColorInFile(selectedColor, newColor, currentScheme);
+            // Check if this is a rim color
+            if (isRimColor(selectedColor)) {
+                ((RadMergerGUI) parent).replaceRimColorInFile(selectedColor, newColor, currentScheme);
+            } else {
+                ((RadMergerGUI) parent).replaceColorInFile(selectedColor, newColor, currentScheme);
+            }
             selectedColor = newColor;
             refreshColorGrid();
         }
+    }
+
+    private boolean isRimColor(Color color) {
+        String fileContent = getFileContent();
+        if (fileContent == null) return false;
+        
+        String rimTag = "";
+        switch (currentScheme) {
+            case 0: rimTag = "rims("; break;
+            case 1: rimTag = "rims1("; break;
+            case 2: rimTag = "rims2("; break;
+        }
+        
+        String[] lines = fileContent.split("\n");
+        for (String line : lines) {
+            if (line.trim().startsWith(rimTag)) {
+                Color rimColor = parseRimColor(line);
+                if (rimColor != null && colorsMatch(rimColor, color)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean colorsMatch(Color c1, Color c2) {
+        return c1.getRed() == c2.getRed() && 
+            c1.getGreen() == c2.getGreen() && 
+            c1.getBlue() == c2.getBlue();
     }
     
     private String getFileContent() {
