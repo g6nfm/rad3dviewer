@@ -438,7 +438,7 @@ public class RadMergerGUI extends JFrame {
     }
 
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(RadMergerGUI::new);
+        SwingUtilities.invokeLater(AppLauncher::new);
     }
     
     public Rad3DViewer getViewer() {

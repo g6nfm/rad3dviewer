@@ -426,6 +426,7 @@ public class ColorPaletteEditor extends JPanel {
             slider.setUI(new javax.swing.plaf.metal.MetalSliderUI() {
                 @Override
                 public void paintTrack(Graphics g) {
+                    if (trackRect == null) return;
                     Graphics2D g2d = (Graphics2D) g;
                     int width = trackRect.width;
                     int height = trackRect.height;
@@ -451,6 +452,7 @@ public class ColorPaletteEditor extends JPanel {
             slider.setUI(new javax.swing.plaf.metal.MetalSliderUI() {
                 @Override
                 public void paintTrack(Graphics g) {
+                    if (trackRect == null) return;
                     Graphics2D g2d = (Graphics2D) g;
                     int width = trackRect.width;
                     int height = trackRect.height;
@@ -469,6 +471,7 @@ public class ColorPaletteEditor extends JPanel {
             slider.setUI(new javax.swing.plaf.metal.MetalSliderUI() {
                 @Override
                 public void paintTrack(Graphics g) {
+                    if (trackRect == null) return;
                     Graphics2D g2d = (Graphics2D) g;
                     int width = trackRect.width;
                     int height = trackRect.height;
