@@ -2,10 +2,6 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 
-/**
- * AppLauncher — start screen that lets the user choose Car Maker or Stage Maker.
- * Change RadMergerGUI.main() to:  SwingUtilities.invokeLater(AppLauncher::new);
- */
 public class AppLauncher extends JFrame {
 
     private static final Color BG     = new Color(22, 22, 35);
@@ -23,18 +19,16 @@ public class AppLauncher extends JFrame {
         JPanel root = new JPanel(new BorderLayout(0, 0));
         root.setBackground(BG);
 
-        // Title
-        JLabel title = new JLabel("NFM Modding Tools", SwingConstants.CENTER);
+        JLabel title = new JLabel("NFM Version Tools", SwingConstants.CENTER);
         title.setFont(new Font("Arial", Font.BOLD, 26));
         title.setForeground(TEXT);
         title.setBorder(BorderFactory.createEmptyBorder(40, 0, 30, 0));
         root.add(title, BorderLayout.NORTH);
 
-        // Cards
         JPanel cards = new JPanel(new GridLayout(1, 2, 30, 0));
         cards.setBackground(BG);
         cards.setBorder(BorderFactory.createEmptyBorder(0, 60, 50, 60));
-        cards.add(buildCard("Car Maker",   "Build and edit\ncar .rad files", GREEN,  e -> openCarMaker()));
+        cards.add(buildCard("Car Maker",   "Build and edit\ncar .rad files",    GREEN,  e -> openCarMaker()));
         cards.add(buildCard("Stage Maker", "Design and save\nstage .txt files", ORANGE, e -> openStageMaker()));
         root.add(cards, BorderLayout.CENTER);
 
@@ -44,7 +38,7 @@ public class AppLauncher extends JFrame {
         setVisible(true);
     }
 
-    private JPanel buildCard(String title, String desc, Color accent, ActionListener action) {
+    private JPanel buildCard(String title, String desc, Color accent, java.awt.event.ActionListener action) {
         JPanel card = new JPanel() {
             @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();

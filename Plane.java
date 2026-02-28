@@ -1182,8 +1182,8 @@ public class Plane {
                 color = Color.getHSBColor(hsb[0], hsb[1], hsb[2] * f1);
             } else {
                 float af[] = new float[3];
-                Color.RGBtoHSB(oc[0], oc[1], oc[2], af); // maybe its this?
-                color = Color.getHSBColor(hsb[0], hsb[1], hsb[2] * f1);
+                Color.RGBtoHSB(oc[0], oc[1], oc[2], af);
+                color = Color.getHSBColor(hsb[0], hsb[1], hsb[2] * 1.0f); // full brightness in editor
             }
             int l11 = color.getRed();
             int j13 = color.getGreen();
@@ -1226,30 +1226,28 @@ public class Plane {
             rd.setColor(new Color(l11, j13, k14, 200));
             rd.fillPolygon(ai14, ai15, n);
             
-            // Add red transparent overlay if hovered (glass)
             if (isHovered) {
-                rd.setColor(new Color(0, 0, 255, 120));
+                rd.setColor(new Color(0, 0, 255, 60));
+                rd.fillPolygon(ai14, ai15, n);
+            }
+
+            if (isSelected && !isHovered) {
+                rd.setColor(new Color(255, 0, 0, 80));
                 rd.fillPolygon(ai14, ai15, n);
             }
             
-            // Add yellow transparent overlay if selected (glass)
-            if (isSelected && !isHovered) {
-                rd.setColor(new Color(255, 0, 0, 100));
-                rd.fillPolygon(ai14, ai15, n);
-            }
         } else {
             rd.setColor(new Color(l11, j13, k14));
             rd.fillPolygon(ai14, ai15, n);
             
             // Add red transparent overlay if hovered (non-glass)
             if (isHovered) {
-                rd.setColor(new Color(0, 0, 255, 120));
+                rd.setColor(new Color(0, 0, 255, 60));
                 rd.fillPolygon(ai14, ai15, n);
             }
-            
-            // Add yellow transparent overlay if selected (non-glass)
+
             if (isSelected && !isHovered) {
-                rd.setColor(new Color(255, 0, 0, 100));
+                rd.setColor(new Color(255, 0, 0, 80));
                 rd.fillPolygon(ai14, ai15, n);
             }
         }

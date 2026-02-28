@@ -36,6 +36,9 @@ public class ContO {
     private boolean noline = false;
     public int grat = 0;
 
+    private int[] cachedATP = null;
+    public boolean wholeHover = false;
+
     public final int[] keyx = new int[8];
     public final int[] keyz = new int[8];
 
@@ -891,7 +894,7 @@ public class ContO {
                 }
 
                 for (int l3 = 0; l3 < npl; l3++) {
-                    boolean isHovered = (ai1[l3] == hoveredPoly);
+                    boolean isHovered = wholeHover || (ai1[l3] == hoveredPoly);
                     boolean isSelected = selectedPolygons != null && selectedPolygons.contains(ai1[l3]);  // FIX: use ai1[l3] not i
                     p[ai1[l3]].d(rd, x - Medium.x, y - Medium.y, z - Medium.z, xz, xy, zy, wxz, wzy, noline, l, isHovered, isSelected);
                 }
@@ -900,6 +903,79 @@ public class ContO {
             }
             //END RENDER MODEL
         }
+    }
+
+    public int[] getAttachPoints() {
+
+        if (cachedATP != null) return cachedATP;
+        
+        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
+        int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+
+        for (int i = 0; i < npl; i++) {
+            for (int v = 0; v < p[i].n; v++) {
+                if (p[i].ox[v] < minX) minX = p[i].ox[v];
+                if (p[i].ox[v] > maxX) maxX = p[i].ox[v];
+                if (p[i].oz[v] < minZ) minZ = p[i].oz[v];
+                if (p[i].oz[v] > maxZ) maxZ = p[i].oz[v];
+            }
+        }
+
+        int threshold = 300;
+
+        // For each extreme, collect vertices near it and measure perpendicular spread
+        // An open end has perp spread >= ~1000 (road is ~1680 wide)
+        // A closed end or side has smaller spread
+        int[] extremeVal  = { maxZ,  minZ,  maxX,  minX  };
+        boolean[] isXaxis = { false, false, true,  true   };
+
+        java.util.List<int[]> openEnds = new java.util.ArrayList<>();
+
+        for (int e = 0; e < 4; e++) {
+            int val = extremeVal[e];
+            boolean xAxis = isXaxis[e];
+            int count = 0;
+
+            for (int i = 0; i < npl; i++) {
+                for (int v = 0; v < p[i].n; v++) {
+                    int primary = xAxis ? p[i].ox[v] : p[i].oz[v];
+                    if (Math.abs(primary - val) <= threshold) {
+                        count++;
+                    }
+                }
+            }
+
+            if (count == 0) continue;
+            // Check spread by counting vertices on both sides of perp axis
+            int negCount = 0, posCount = 0;
+            for (int i = 0; i < npl; i++) {
+                for (int v = 0; v < p[i].n; v++) {
+                    int primary = xAxis ? p[i].ox[v] : p[i].oz[v];
+                    int perp    = xAxis ? p[i].oz[v] : p[i].ox[v];
+                    if (Math.abs(primary - val) <= threshold) {
+                        if (perp < 0) negCount++;
+                        else if (perp > 0) posCount++;
+                    }
+                }
+            }
+            // Open end has vertices on both sides of center
+            if (negCount > 0 && posCount > 0) {
+                int ax = xAxis ? val : 0;
+                int az = xAxis ? 0 : val;
+                openEnds.add(new int[]{ ax, az });
+            }
+        }
+
+        if (openEnds.size() >= 2) {
+            cachedATP = new int[]{ openEnds.get(0)[0], openEnds.get(0)[1],
+                                openEnds.get(1)[0], openEnds.get(1)[1] };
+            return cachedATP;
+        } else if (openEnds.size() == 1) {
+            cachedATP = new int[]{ openEnds.get(0)[0], openEnds.get(0)[1], 0, 0 };
+            return cachedATP;
+        }
+        cachedATP = new int[]{ 0, maxZ, 0, minZ };
+        return cachedATP;
     }
 
 }
