@@ -82,6 +82,13 @@ public class StageMakerPanel extends JPanel {
     private boolean removeMode = false;
     private boolean snapEnabled = true;
 
+    private boolean aiTagMode = false;
+    private String  activeAiTag = "p"; // currently selected tag to assign
+    private int     aiOrderCounter = 0; // next order number to assign
+    private final Set<PlacedPart> aiTaggedParts = new HashSet<>();
+    private JPanel aiTagToolbar = null;
+
+
     private PlacedPart selectedPart = null;
 
     private JButton[] tabBtns;
@@ -140,7 +147,24 @@ public class StageMakerPanel extends JPanel {
         JPanel buildPanel = new JPanel(new BorderLayout(0,0));
         buildPanel.setBackground(new Color(220,220,220));
         buildPanel.add(buildLeftPanel(), BorderLayout.WEST);
-        buildPanel.add(canvasWrapper, BorderLayout.CENTER);
+        aiTagToolbar = buildAiTagToolbar();
+        aiTagToolbar.setVisible(false);
+
+        JLayeredPane layered = new JLayeredPane() {
+            @Override public void doLayout() {
+                for (Component c : getComponents()) {
+                    if (c == canvasWrapper) {
+                        c.setBounds(0, 0, getWidth(), getHeight());
+                    } else {
+                        int h = c.getPreferredSize().height;
+                        c.setBounds(0, 40, getWidth(), h);
+                    }
+                }
+            }
+        };
+        layered.add(canvasWrapper, JLayeredPane.DEFAULT_LAYER);
+        layered.add(aiTagToolbar,  JLayeredPane.PALETTE_LAYER);
+        buildPanel.add(layered, BorderLayout.CENTER);
 
         mainCards = new CardLayout();
         mainCardPanel = new JPanel(mainCards);
@@ -444,8 +468,200 @@ public class StageMakerPanel extends JPanel {
         gotoBtn  .addActionListener(e -> { camX=0; camZ=0; stageCanvas.repaint(); });
         left.add(removeBtn); left.add(Box.createVerticalStrut(4));
         left.add(gotoBtn);
+        left.add(Box.createVerticalStrut(6));
+
+
+        JButton aiTagBtn = wideBtn("AI Tag Mode: OFF");
+        aiTagBtn.addActionListener(e -> {
+            aiTagMode = !aiTagMode;
+            aiTagBtn.setText(aiTagMode ? "AI Tag Mode: ON" : "AI Tag Mode: OFF");
+            aiTagBtn.setBackground(aiTagMode ? new Color(180, 100, 100) : UIManager.getColor("Button.background"));
+            if (aiTagToolbar != null) aiTagToolbar.setVisible(aiTagMode);
+            if (aiTagMode) {
+                for (PlacedPart pp : stage) { pp.aiTag = ""; pp.aiOrder = -1; }
+                aiTaggedParts.clear();
+                aiOrderCounter = 0;
+            }
+            stageCanvas.repaint();
+        });
+
+        left.add(aiTagBtn);
+        left.add(Box.createVerticalStrut(4));
         left.add(Box.createVerticalGlue());
         return left;
+    }
+
+    private JPanel buildAiTagToolbar() {
+        JPanel bar = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 6));
+        bar.setOpaque(false);
+        bar.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
+
+        JLabel lbl = new JLabel("AI Tag:");
+        lbl.setForeground(Color.WHITE);
+        lbl.setFont(new Font("Arial", Font.BOLD, 12));
+        bar.add(lbl);
+
+        // tag, label, color
+        Object[][] tags = {
+            { "",   "None",  new Color(100,100,110) },
+            { "p",  ")p",    new Color(40, 140, 40)  },
+            { "pt", ")pt",   new Color(40, 100, 200) },
+            { "pr", ")pr",   new Color(180, 120, 20) },
+            { "ph", ")ph",   new Color(140, 40, 160) },
+            { "po", ")po",   new Color(180, 60, 60)  },
+            { "chk","Chk",   new Color(20, 160, 160) },
+        };
+
+        ButtonGroup group = new ButtonGroup();
+        for (Object[] td : tags) {
+            final String tag = (String) td[0];
+            String label = (String) td[1];
+            Color base = (Color) td[2];
+
+            JToggleButton tb = new JToggleButton(label) {
+                boolean hovered = false;
+                {
+                    addMouseListener(new MouseAdapter() {
+                        @Override public void mouseEntered(MouseEvent e) { hovered = true;  repaint(); }
+                        @Override public void mouseExited (MouseEvent e) { hovered = false; repaint(); }
+                    });
+                }
+                @Override protected void paintComponent(Graphics g) {
+                    Graphics2D g2 = (Graphics2D) g;
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    boolean sel = isSelected();
+                    if (sel) {
+                        g2.setColor(base);
+                        g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+                        g2.setColor(base.darker());
+                        g2.setStroke(new BasicStroke(2.5f));
+                        g2.drawRoundRect(1, 1, getWidth()-2, getHeight()-2, 8, 8);
+                        g2.setColor(Color.WHITE);
+                    } else if (hovered) {
+                        g2.setColor(new Color(
+                            Math.min(255, base.getRed()   + 160),
+                            Math.min(255, base.getGreen() + 160),
+                            Math.min(255, base.getBlue()  + 160)
+                        ));
+                        g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+                        g2.setColor(base);
+                        g2.setStroke(new BasicStroke(1.5f));
+                        g2.drawRoundRect(1, 1, getWidth()-2, getHeight()-2, 8, 8);
+                        g2.setColor(new Color(30, 30, 40));
+                    } else {
+                        g2.setColor(new Color(235, 235, 240));
+                        g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+                        g2.setColor(new Color(180, 180, 190));
+                        g2.setStroke(new BasicStroke(1f));
+                        g2.drawRoundRect(1, 1, getWidth()-2, getHeight()-2, 8, 8);
+                        g2.setColor(new Color(50, 50, 60));
+                    }
+                    g2.setFont(getFont());
+                    FontMetrics fm = g2.getFontMetrics();
+                    g2.drawString(getText(), (getWidth()-fm.stringWidth(getText()))/2,
+                        (getHeight()+fm.getAscent()-fm.getDescent())/2);
+                }
+            };
+            tb.setFont(new Font("Arial", Font.BOLD, 12));
+            tb.setPreferredSize(new Dimension(52, 30));
+            tb.setFocusPainted(false);
+            tb.setContentAreaFilled(false);
+            tb.setBorderPainted(false);
+            tb.setSelected(tag.equals("p"));
+            tb.addActionListener(e -> activeAiTag = tag);
+            group.add(tb);
+            bar.add(tb);
+        }
+
+        // Separator
+        JSeparator sep = new JSeparator(SwingConstants.VERTICAL);
+        sep.setPreferredSize(new Dimension(2, 28));
+        sep.setForeground(new Color(120,120,130));
+        bar.add(sep);
+
+        JButton resetBtn = new JButton("Reset") {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g;
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(160, 80, 80));
+                g2.fillRoundRect(0,0,getWidth(),getHeight(),8,8);
+                g2.setColor(new Color(200,120,120));
+                g2.drawRoundRect(1,1,getWidth()-2,getHeight()-2,8,8);
+                g2.setColor(Color.WHITE);
+                g2.setFont(getFont());
+                FontMetrics fm = g2.getFontMetrics();
+                g2.drawString(getText(),(getWidth()-fm.stringWidth(getText()))/2,
+                    (getHeight()+fm.getAscent()-fm.getDescent())/2);
+            }
+        };
+        resetBtn.setFont(new Font("Arial", Font.BOLD, 12));
+        resetBtn.setPreferredSize(new Dimension(60, 30));
+        resetBtn.setFocusPainted(false);
+        resetBtn.setContentAreaFilled(false);
+        resetBtn.setBorderPainted(false);
+        resetBtn.addActionListener(e -> {
+            for (PlacedPart pp : stage) { pp.aiTag = ""; pp.aiOrder = -1; }
+            aiTaggedParts.clear();
+            aiOrderCounter = 0;
+            stageCanvas.repaint();
+        });
+        bar.add(resetBtn);
+
+        JButton confirmBtn = new JButton("Confirm Order") {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g;
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(40, 130, 60));
+                g2.fillRoundRect(0,0,getWidth(),getHeight(),8,8);
+                g2.setColor(new Color(80,180,100));
+                g2.drawRoundRect(1,1,getWidth()-2,getHeight()-2,8,8);
+                g2.setColor(Color.WHITE);
+                g2.setFont(getFont());
+                FontMetrics fm = g2.getFontMetrics();
+                g2.drawString(getText(),(getWidth()-fm.stringWidth(getText()))/2,
+                    (getHeight()+fm.getAscent()-fm.getDescent())/2);
+            }
+        };
+        confirmBtn.setFont(new Font("Arial", Font.BOLD, 12));
+        confirmBtn.setPreferredSize(new Dimension(120, 30));
+        confirmBtn.setFocusPainted(false);
+        confirmBtn.setContentAreaFilled(false);
+        confirmBtn.setBorderPainted(false);
+        confirmBtn.addActionListener(e -> {
+            // Check all checkpoints are tagged
+            boolean allChkTagged = stage.stream()
+                .filter(pp -> pp.type == 1)
+                .allMatch(pp -> pp.aiOrder >= 0);
+            if (!allChkTagged) {
+                JOptionPane.showMessageDialog(StageMakerPanel.this,
+                    "All checkpoints must be ordered before confirming.",
+                    "Missing Checkpoints", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            applyAiOrdering();
+            aiTagMode = false;
+            aiTagToolbar.setVisible(false);
+            // reset the toggle button text — find it in left panel
+            stageCanvas.repaint();
+        });
+        bar.add(confirmBtn);
+
+        return bar;
+    }
+
+    private void applyAiOrdering() {
+        // Separate ordered and unordered pieces
+        java.util.List<PlacedPart> ordered   = new ArrayList<>();
+        java.util.List<PlacedPart> unordered = new ArrayList<>();
+        for (PlacedPart pp : stage) {
+            if (pp.aiOrder >= 0) ordered.add(pp);
+            else unordered.add(pp);
+        }
+        ordered.sort((a, b) -> Integer.compare(a.aiOrder, b.aiOrder));
+        stage.clear();
+        stage.addAll(ordered);
+        stage.addAll(unordered);
+        stageCanvas.repaint();
     }
 
     private void toggleRemoveMode() {
@@ -644,15 +860,6 @@ public class StageMakerPanel extends JPanel {
         stageCanvas.repaint();
     }
 
-    private void removePart(int wx, int wz) {
-        PlacedPart best=null; double bestD=Double.MAX_VALUE;
-        for (PlacedPart pp : stage) {
-            double d = Math.hypot(pp.x-wx, pp.z-wz);
-            if (d<bestD) { bestD=d; best=pp; }
-        }
-        if (best!=null && bestD<SNAP) { pushUndo(); stage.remove(best); stageCanvas.repaint(); }
-    }
-
     private static int partType(int idx) {
         if (idx == 30 || idx == 32) return 1;
         if (idx == 31) return 2;
@@ -689,32 +896,19 @@ public class StageMakerPanel extends JPanel {
     private String buildBstage() {
         StringBuilder sb = new StringBuilder();
         for (PlacedPart pp : stage) {
+            String tag = (pp.aiTag != null ? pp.aiTag : "");
             switch (pp.type) {
-                case 0: sb.append("set(").append(pp.fileId).append(',').append(pp.x).append(',').append(pp.z).append(',').append(pp.rot).append(")\r\n"); break;
-                case 1: sb.append("chk(").append(pp.fileId).append(',').append(pp.x).append(',').append(pp.z).append(',').append(pp.rot).append(")\r\n"); break;
-                case 2: sb.append("fix(").append(pp.fileId).append(',').append(pp.x).append(',').append(pp.z).append(',').append(pp.y).append(',').append(pp.rot).append(")\r\n"); break;
+                case 0: sb.append("set(").append(pp.fileId).append(',').append(pp.x).append(',').append(pp.z).append(',').append(pp.rot).append(")").append(tag).append("\r\n"); break;
+                case 1: sb.append("chk(").append(pp.fileId).append(',').append(pp.x).append(',').append(pp.z).append(',').append(pp.rot).append(")").append(tag).append("\r\n"); break;
+                case 2: sb.append("fix(").append(pp.fileId).append(',').append(pp.x).append(',').append(pp.z).append(',').append(pp.y).append(',').append(pp.rot).append(")").append(tag).append("\r\n"); break;
             }
         }
         return sb.toString();
     }
 
-    private void parseBstage(String src) {
-        if (modelBytes==null) return;
-        for (String raw : src.split("\\r?\\n")) {
-            String line = raw.trim();
-            if (line.startsWith("//")) continue;
-            if (line.contains(")")) line = line.substring(0, line.indexOf(')')+1);
-            try {
-                if      (line.startsWith("set(")) addPart(gi("set",line,0),gi("set",line,1),gi("set",line,2),gi("set",line,3),0);
-                else if (line.startsWith("chk(")) addPart(gi("chk",line,0),gi("chk",line,1),gi("chk",line,2),gi("chk",line,3),1);
-                else if (line.startsWith("fix(")) addPart(gi("fix",line,0),gi("fix",line,1),gi("fix",line,2),gi("fix",line,4),2);
-            } catch (Exception ignored) {}
-        }
-    }
-
-    private void addPart(int fid, int x, int z, int r, int type) {
+    private PlacedPart addPart(int fid, int x, int z, int r, int type) {
         int idx = fileIdToIdx(fid);
-        if (idx<0||idx>=modelBytes.length||modelBytes[idx]==null) return;
+        if (idx<0||idx>=modelBytes.length||modelBytes[idx]==null) return null;
         ContO c = new ContO(modelBytes[idx], medium);
         int wy = Medium.ground - c.grat;
         c.x=x; c.y=wy; c.z=z; c.xz=r;
@@ -723,6 +917,27 @@ public class StageMakerPanel extends JPanel {
         ContO atpC = new ContO(modelBytes[idx], medium);
         pp.atp = atpC.getAttachPoints();
         stage.add(pp);
+        return pp;
+    }
+
+    private void parseBstage(String src) {
+        if (modelBytes==null) return;
+        for (String raw : src.split("\\r?\\n")) {
+            String line = raw.trim();
+            if (line.startsWith("//")) continue;
+            int closeIdx = line.indexOf(')');
+            String tag = "";
+            if (closeIdx >= 0 && closeIdx < line.length() - 1)
+                tag = line.substring(closeIdx + 1).trim();
+            if (line.contains(")")) line = line.substring(0, closeIdx + 1);
+            try {
+                PlacedPart pp = null;
+                if      (line.startsWith("set(")) pp = addPart(gi("set",line,0),gi("set",line,1),gi("set",line,2),gi("set",line,3),0);
+                else if (line.startsWith("chk(")) pp = addPart(gi("chk",line,0),gi("chk",line,1),gi("chk",line,2),gi("chk",line,3),1);
+                else if (line.startsWith("fix(")) pp = addPart(gi("fix",line,0),gi("fix",line,1),gi("fix",line,2),gi("fix",line,4),2);
+                if (pp != null) pp.aiTag = tag;
+            } catch (Exception ignored) {}
+        }
     }
 
     private void saveStage() {
@@ -1077,8 +1292,22 @@ public class StageMakerPanel extends JPanel {
                         if (target != null) {
                             showPartContextMenu(target, e.getX(), e.getY());
                         }
-                    } else if (SwingUtilities.isLeftMouseButton(e)) {
-                        placePart(stw(e.getX(),getWidth()), stz(e.getY(),getHeight()));
+                    } else if (aiTagMode && SwingUtilities.isLeftMouseButton(e)) {
+                        int wx = stw(e.getX(), getWidth());
+                        int wz = stz(e.getY(), getHeight());
+                        PlacedPart target = findNearestPart(wx, wz);
+                        if (target != null) {
+                            if (target.type == 1) {
+                                // checkpoints just get ordered, no tag
+                                target.aiTag = "";
+                            } else {
+                                target.aiTag = activeAiTag;
+                            }
+                            target.aiOrder = aiOrderCounter++;
+                            aiTaggedParts.add(target);
+                        }
+                        repaint();
+                        return;
                     }
                 }
                 @Override public void mouseReleased(MouseEvent e) { panning=false; }
@@ -1180,9 +1409,7 @@ public class StageMakerPanel extends JPanel {
             //drawArrows(g2,w,h);
         }
 
-        
 
-        
 
         private void drawParts(Graphics2D g2, int w, int h) {
             for (PlacedPart pp : stage) {
@@ -1191,21 +1418,43 @@ public class StageMakerPanel extends JPanel {
                 pp.conto.y  = pp.y;
                 pp.conto.z  = pp.z;
                 pp.conto.xz = pp.rot;
-                if (pp == selectedPart) {
+                if (!aiTagMode && pp == selectedPart) {
                     Set<Integer> allPolys = new HashSet<>();
                     for (int i = 0; i < pp.conto.npl; i++) allPolys.add(i);
                     pp.conto.wholeHover = false;
                     pp.conto.d(g2, -1, allPolys);
-                } else {
+                } else if (aiTagMode && aiTaggedParts.contains(pp)) {
+                    Set<Integer> allPolys = new HashSet<>();
+                    for (int i = 0; i < pp.conto.npl; i++) allPolys.add(i);
                     pp.conto.wholeHover = (pp == hoveredPart);
+                    pp.conto.d(g2, -1, allPolys);
+                    pp.conto.wholeHover = false;
+                } else {
+                    pp.conto.wholeHover = aiTagMode && (pp == hoveredPart);
                     pp.conto.d(g2, -1, null);
                     pp.conto.wholeHover = false;
+                }
+            }
+            if (aiTagMode) {
+                g2.setFont(new Font("Arial", Font.BOLD, 11));
+                for (PlacedPart pp : stage) {
+                    int sx = wts(pp.x, w);
+                    int sz = wtz(pp.z, h);
+                    if (pp.aiOrder >= 0) {
+                        g2.setColor(new Color(255, 140, 0));
+                        g2.drawString(String.valueOf(pp.aiOrder + 1), sx - 4, sz - 14);
+                    }
+                    if (pp.aiTag != null && !pp.aiTag.isEmpty()) {
+                        g2.setColor(new Color(200, 40, 40));
+                        g2.drawString(")" + pp.aiTag, sx - 4, sz - 4);
+                    }
                 }
             }
         }
 
         private void drawGhost(Graphics2D g2, int w, int h) {
             if (previewModel == null) return;
+            if (aiTagMode) return;
             previewModel.x  = ghostX;
             previewModel.y  = Medium.ground - previewModel.grat;
             previewModel.z  = ghostZ;
@@ -1252,6 +1501,8 @@ public class StageMakerPanel extends JPanel {
         int modelIdx, fileId, x, y, z, rot, type;
         ContO conto;
         int[] atp;
+         String aiTag = "";
+        int aiOrder = -1;
     }
 
     // ══════════════════════════════════════════════════════════════════════

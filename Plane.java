@@ -1232,7 +1232,7 @@ public class Plane {
             }
 
             if (isSelected && !isHovered) {
-                rd.setColor(new Color(255, 0, 0, 80));
+                rd.setColor(new Color(0, 80, 255, 80));
                 rd.fillPolygon(ai14, ai15, n);
             }
             
