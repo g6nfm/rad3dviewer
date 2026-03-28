@@ -79,46 +79,50 @@ public class ContO {
     
     
 
-    class TempPoly {
+    /*class TempPoly {
             int[] ox, oy, oz;
             int n;
             SimpleColor c, c1, c2;
             boolean noOutline;
             int gr, fs;
-        }
+        }*/
 
         boolean hasWheelModels = false;
-        Map<Integer, List<TempPoly>> wheelModels = new HashMap<>();
+        Map<Integer, Model> wheelModels = new HashMap<>();
 
         private void makeCustomWheel(
         int nplStart,
         int wxv, int wyv, int wzv,
         int rotates,
-        List<TempPoly> model,
+        Model model,
         int wheelIndex,
         int width,
         int size
 ) {
     //boolean mirror = (wheelIndex % 2 == 1);
+    boolean mirror = wxv >= 0;
+    float modelWidth = model.GetWidth();
+    float scale = size / model.GetNFMCorrectedRadius();
+    float wscale = width / modelWidth;
+    for (Polygon poly : model.Polygons) {
 
-    for (TempPoly poly : model) {
+        int[] ox = new int[poly.NumPoints];
+        int[] oy = new int[poly.NumPoints];
+        int[] oz = new int[poly.NumPoints];
 
-        int[] ox = new int[poly.n];
-        int[] oy = new int[poly.n];
-        int[] oz = new int[poly.n];
+        //float scale  = size  / 20f;
+        //float wscale = width / 20f;
 
-        float scale  = size  / 20f;
-        float wscale = width / 20f;
+        for (int v = 0; v < poly.NumPoints; v++) {
 
-        for (int v = 0; v < poly.n; v++) {
-
-            int lx = poly.ox[v];
-            int ly = poly.oy[v];
-            int lz = poly.oz[v];
+            int lx = poly.PointsX[v];
+            int ly = poly.PointsY[v];
+            int lz = poly.PointsZ[v];
 
             lx *= wscale;
             ly *= scale;
             lz *= scale;
+            if(mirror) lx *= -1;
 
             ox[v] = (int)(lx) + wxv;
             oy[v] = (int)(ly) + wyv;
@@ -129,9 +133,9 @@ public class ContO {
         }
 
         // --- COLOR ARRAYS JUST LIKE OLD SYSTEM ---
-        SimpleColor c  = poly.c;
-        SimpleColor c1 = poly.c1;
-        SimpleColor c2 = poly.c2;
+        SimpleColor c  = poly.Color1;
+        SimpleColor c1 = poly.Color2;
+        SimpleColor c2 = poly.Color3;
 
         int[] col = { c.r, c.g, c.b };
 
@@ -142,17 +146,17 @@ public class ContO {
         p[nplStart] = new Plane(
             m,
             ox, oz, oy,
-            poly.n,
+            poly.NumPoints,
             col,
             false,
-            poly.gr,
-            poly.fs,
+            poly.Gr,
+            poly.Fs,
             px, wyv, wzv,   // pivot X *controls* rotation
             disline,
             pr,             // rotates only front wheels
             false,
             0,
-            poly.noOutline
+            poly.NoOutline
         );
 
         // --- MATCH OLD BEHAVIOR: ADD COLORS TO GLOBAL LISTS ---
@@ -226,7 +230,24 @@ public class ContO {
                     int start = line.indexOf('(') + 1;
                     int end   = line.indexOf(')');
                     currentWheelModelID = Integer.parseInt(line.substring(start, end).trim());
-                    wheelModels.put(currentWheelModelID, new ArrayList<>());
+                    end += 1;
+                    start = StringSearch.IndexOf(line, "Width=", end, StringComparison.OrdinalIgnoreCase);
+                    int width = -1;
+                    int radius = -1;
+                    if(start != -1)
+                    {
+                    	start += 6;
+                    	int numNumerics = StringSearch.GetLengthOfNumericSequence(line, start, NumericSearchFlags.Integer);
+                    	width = Integer.parseInt(line.substring(start, start + numNumerics));
+                    }
+                    start = StringSearch.IndexOf(line, "Radius=", end, StringComparison.OrdinalIgnoreCase);
+                    if(start != -1)
+                    {
+                    	start += 7;
+                    	int numNumerics = StringSearch.GetLengthOfNumericSequence(line, start, NumericSearchFlags.Integer);
+                    	radius = Integer.parseInt(line.substring(start, start + numNumerics));
+                    }
+                    wheelModels.put(currentWheelModelID, new Model(width, radius));
                     continue;
                 }
                 // ---- CORRECT wheelModel close ----
@@ -235,7 +256,7 @@ public class ContO {
                     // print BEFORE resetting
                     System.out.println(
                         "Loaded wheelModel " + currentWheelModelID +
-                        " polys = " + wheelModels.get(currentWheelModelID).size()
+                        " polys = " + wheelModels.get(currentWheelModelID).Polygons.size()
                     );
 
                     inWheelModel = false;
@@ -255,23 +276,23 @@ public class ContO {
                 if (inWheelModel && line.startsWith("[/p]")) {
                     inWheelPoly = false;
 
-                    TempPoly poly = new TempPoly();
-                    poly.n = tmpVerts;
-                    poly.ox = Arrays.copyOf(tmpOx, tmpVerts);
-                    poly.oy = Arrays.copyOf(tmpOy, tmpVerts);
-                    poly.oz = Arrays.copyOf(tmpOz, tmpVerts);
-                    poly.c = tmpC;
-                    poly.c1 = tmpC1;
-                    poly.c2 = tmpC2;
-                    poly.noOutline = tmpNoOutline;
-                    poly.gr = tmpGr;
-                    poly.fs = tmpFs;
+                    Polygon poly = new Polygon();
+                    poly.NumPoints = tmpVerts;
+                    poly.PointsX = Arrays.copyOf(tmpOx, tmpVerts);
+                    poly.PointsY = Arrays.copyOf(tmpOy, tmpVerts);
+                    poly.PointsZ = Arrays.copyOf(tmpOz, tmpVerts);
+                    poly.Color1 = tmpC;
+                    poly.Color2 = tmpC1;
+                    poly.Color3 = tmpC2;
+                    poly.NoOutline = tmpNoOutline;
+                    poly.Gr = tmpGr;
+                    poly.Fs = tmpFs;
 
                     original.add(tmpC);
                     skin1.add(tmpC1);
                     skin2.add(tmpC2);
 
-                    wheelModels.get(currentWheelModelID).add(poly);
+                    wheelModels.get(currentWheelModelID).Polygons.add(poly);
                     continue;
                 }
                 // ----- STEP 3: Parse contents of a wheel polygon -----
@@ -514,7 +535,7 @@ public class ContO {
                     }
 
                     // Optional custom wheel model
-                    List<TempPoly> model = wheelModels.get(modelID);
+                    Model model = wheelModels.get(modelID);
 
                     int oldNpl = npl;   // save start index before generating wheel polys
 
@@ -526,13 +547,13 @@ public class ContO {
 
                     int polyCount;
 
-                    if (modelID != -1 && model != null && !model.isEmpty()) {
+                    if (modelID != -1 && model != null && !model.IsEmpty()) {
                         // custom wheel
                         isCustomWheel[j] = true;
                         wa.custom = true;
 
                         makeCustomWheel(npl, wxv, wyv, wzv, rotates, model, j, width, size);
-                        polyCount = model.size();
+                        polyCount = model.Polygons.size();
                         npl += polyCount;
 
                     } else {
@@ -607,8 +628,8 @@ public class ContO {
                             int newZ,
                             int newRotates) {
 
-        List<ContO.TempPoly> model = car.wheelModels.get(wheelModelID);
-        if (model == null || model.isEmpty()) return;
+        Model model = car.wheelModels.get(wheelModelID);
+        if (model == null || model.IsEmpty()) return;
 
         for (int w : selectedWheels) {
 
@@ -645,7 +666,7 @@ public class ContO {
             int insertAt = oldStart;  // reuse the old start index
 
             // Make space in the array BEFORE inserting new polys
-            int newCount = model.size();
+            int newCount = model.Polygons.size();
             for (int i = car.npl - 1; i >= insertAt; i--) {
                 car.p[i + newCount] = car.p[i];
             }
