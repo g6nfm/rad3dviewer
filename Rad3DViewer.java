@@ -910,19 +910,47 @@ public class Rad3DViewer extends JPanel
     }
 
     private void paintPolygon(int polyIndex) {
-        // Find the color palette editor and get the paint color
         Component parent = this;
         while (parent != null && !(parent instanceof RadMergerGUI)) {
             parent = parent.getParent();
         }
-        
+
         if (parent instanceof RadMergerGUI) {
             RadMergerGUI gui = (RadMergerGUI) parent;
             ColorPaletteEditor editor = gui.getColorPaletteEditor();
-            
+
             if (editor != null && editor.isPaintModeActive()) {
                 Color paintColor = editor.getPaintColor();
-                changePolygonColorDirect(polyIndex, paintColor);
+                int paintScheme = editor.getPaintScheme();
+
+                ContO model = getActiveModel();
+                if (model == null || polyIndex >= model.npl) return;
+
+                Plane poly = model.p[polyIndex];
+                poly.c[0] = paintColor.getRed();
+                poly.c[1] = paintColor.getGreen();
+                poly.c[2] = paintColor.getBlue();
+                poly.oc[0] = paintColor.getRed();
+                poly.oc[1] = paintColor.getGreen();
+                poly.oc[2] = paintColor.getBlue();
+
+                float[] hsb = Color.RGBtoHSB(paintColor.getRed(), paintColor.getGreen(), paintColor.getBlue(), null);
+                poly.hsb[0] = hsb[0];
+                poly.hsb[1] = hsb[1];
+                poly.hsb[2] = hsb[2];
+
+                // Only update the skin list for the selected scheme
+                int colorIndex = findColorIndex(model, polyIndex);
+                if (colorIndex != -1) {
+                    SimpleColor sc = new SimpleColor(paintColor.getRed(), paintColor.getGreen(), paintColor.getBlue());
+                    switch (paintScheme) {
+                        case 0: model.original.set(colorIndex, sc); break;
+                        case 1: model.skin1.set(colorIndex, sc); break;
+                        case 2: model.skin2.set(colorIndex, sc); break;
+                    }
+                }
+
+                gui.updatePolygonColorInFile(polyIndex, paintColor, paintScheme);
                 repaint();
             }
         }

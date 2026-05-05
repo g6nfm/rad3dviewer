@@ -47,6 +47,9 @@ public class Plane {
     public int flx;
     public boolean noOutline;
 
+    public Color hoverColor    = new Color(0, 0, 255, 60);
+    public Color selectedColor = new Color(0, 80, 255, 80);
+
     public void loadprojf() {
         projf = 1.0F;
         int i = 0;
@@ -1228,7 +1231,15 @@ public class Plane {
             
             // Add red transparent overlay if hovered (glass)
             if (isHovered) {
+<<<<<<< Updated upstream
                 rd.setColor(new Color(0, 0, 255, 120));
+=======
+                rd.setColor(hoverColor);
+                rd.fillPolygon(ai14, ai15, n);
+            }
+            if (isSelected && !isHovered) {
+                rd.setColor(selectedColor);
+>>>>>>> Stashed changes
                 rd.fillPolygon(ai14, ai15, n);
             }
             
@@ -1243,6 +1254,7 @@ public class Plane {
             
             // Add red transparent overlay if hovered (non-glass)
             if (isHovered) {
+<<<<<<< Updated upstream
                 rd.setColor(new Color(0, 0, 255, 120));
                 rd.fillPolygon(ai14, ai15, n);
             }
@@ -1250,6 +1262,13 @@ public class Plane {
             // Add yellow transparent overlay if selected (non-glass)
             if (isSelected && !isHovered) {
                 rd.setColor(new Color(255, 0, 0, 100));
+=======
+                rd.setColor(hoverColor);
+                rd.fillPolygon(ai14, ai15, n);
+            }
+            if (isSelected && !isHovered) {
+                rd.setColor(selectedColor);
+>>>>>>> Stashed changes
                 rd.fillPolygon(ai14, ai15, n);
             }
         }

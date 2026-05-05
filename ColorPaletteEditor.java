@@ -32,6 +32,11 @@ public class ColorPaletteEditor extends JPanel {
     private JSlider paintBrightSlider;
     private JPanel paintBrushPanel;
     private JPanel paintColorPreview;
+
+    private JTextField paintRgbField;
+    private JLabel paintStatusLabel;
+
+    private boolean updatingFromRGB = false;
     
     public ColorPaletteEditor(Rad3DViewer viewer) {
         this.viewer = viewer;
@@ -265,21 +270,18 @@ public class ColorPaletteEditor extends JPanel {
         paintBrushPanel.setLayout(new BoxLayout(paintBrushPanel, BoxLayout.Y_AXIS));
         paintBrushPanel.setOpaque(false);
         paintBrushPanel.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
-        
-        // Title
+
         JLabel brushLabel = new JLabel("Paint Brush Color");
         brushLabel.setForeground(Color.WHITE);
         brushLabel.setFont(new Font("SansSerif", Font.BOLD, 14));
         brushLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         paintBrushPanel.add(brushLabel);
         paintBrushPanel.add(Box.createVerticalStrut(8));
-        
-        // Horizontal layout: preview LEFT, sliders RIGHT
+
         JPanel contentPanel = new JPanel(new BorderLayout(15, 0));
         contentPanel.setOpaque(false);
         contentPanel.setMaximumSize(new Dimension(600, 120));
-        
-        // SQUARE preview
+
         paintColorPreview = new JPanel();
         paintColorPreview.setPreferredSize(new Dimension(100, 100));
         paintColorPreview.setMinimumSize(new Dimension(100, 100));
@@ -287,13 +289,11 @@ public class ColorPaletteEditor extends JPanel {
         paintColorPreview.setBackground(Color.RED);
         paintColorPreview.setBorder(BorderFactory.createLineBorder(Color.WHITE, 2));
         contentPanel.add(paintColorPreview, BorderLayout.WEST);
-        
-        // Sliders panel
+
         JPanel slidersPanel = new JPanel();
         slidersPanel.setLayout(new BoxLayout(slidersPanel, BoxLayout.Y_AXIS));
         slidersPanel.setOpaque(false);
-        
-        // Hue
+
         paintHueSlider = new JSlider(0, 360, 0);
         paintHueSlider.setOpaque(false);
         paintHueSlider.setUI(new javax.swing.plaf.metal.MetalSliderUI() {
@@ -315,8 +315,7 @@ public class ColorPaletteEditor extends JPanel {
         });
         slidersPanel.add(createSliderPanel("Hue:", paintHueSlider));
         slidersPanel.add(Box.createVerticalStrut(5));
-        
-        // Saturation
+
         paintSatSlider = new JSlider(0, 100, 100);
         paintSatSlider.setOpaque(false);
         paintSatSlider.setUI(new javax.swing.plaf.metal.MetalSliderUI() {
@@ -336,8 +335,7 @@ public class ColorPaletteEditor extends JPanel {
         paintSatSlider.addChangeListener(e -> updatePaintColorFromSliders());
         slidersPanel.add(createSliderPanel("Saturation:", paintSatSlider));
         slidersPanel.add(Box.createVerticalStrut(5));
-        
-        // Brightness
+
         paintBrightSlider = new JSlider(0, 100, 100);
         paintBrightSlider.setOpaque(false);
         paintBrightSlider.setUI(new javax.swing.plaf.metal.MetalSliderUI() {
@@ -353,18 +351,65 @@ public class ColorPaletteEditor extends JPanel {
         });
         paintBrightSlider.addChangeListener(e -> updatePaintColorFromSliders());
         slidersPanel.add(createSliderPanel("Brightness:", paintBrightSlider));
-        
+
         contentPanel.add(slidersPanel, BorderLayout.CENTER);
         paintBrushPanel.add(contentPanel);
+
+        // RGB input row
+        JPanel paintRgbPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        paintRgbPanel.setOpaque(false);
+
+        JLabel paintRgbLabel = new JLabel("RGB:");
+        paintRgbLabel.setForeground(Color.WHITE);
+        paintRgbPanel.add(paintRgbLabel);
+
+        paintRgbField = new JTextField("(255,0,0)", 12);
+        paintRgbPanel.add(paintRgbField);
+
+        JButton paintApplyRGBBtn = new JButton("Set");
+            paintApplyRGBBtn.addActionListener(e -> {
+            try {
+                String text = paintRgbField.getText().trim().replaceAll("[()]", "");
+                String[] values = text.split(",");
+                int r = Math.max(0, Math.min(255, Integer.parseInt(values[0].trim())));
+                int g = Math.max(0, Math.min(255, Integer.parseInt(values[1].trim())));
+                int bVal = Math.max(0, Math.min(255, Integer.parseInt(values[2].trim())));
+
+                paintColor = new Color(r, g, bVal);
+                paintRgbField.setText(String.format("(%d,%d,%d)", r, g, bVal));
+                updatePaintColorPreview();
+
+                if (paintStatusLabel != null) {
+                    paintStatusLabel.setText("Color set! Click polygons to paint.");
+                }
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "Invalid RGB format. Use: 255,0,0", "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        paintRgbPanel.add(paintApplyRGBBtn);
+        paintBrushPanel.add(paintRgbPanel);
+
+        // Status label
+        paintStatusLabel = new JLabel(" ");
+        paintStatusLabel.setForeground(new Color(100, 220, 100));
+        paintStatusLabel.setFont(new Font("SansSerif", Font.ITALIC, 11));
+        paintStatusLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        paintBrushPanel.add(paintStatusLabel);
+
         paintBrushPanel.setVisible(false);
     }
 
     private void updatePaintColorFromSliders() {
+        if (updatingFromRGB) return;
         float h = paintHueSlider.getValue() / 360.0f;
         float s = paintSatSlider.getValue() / 100.0f;
         float b = paintBrightSlider.getValue() / 100.0f;
         paintColor = Color.getHSBColor(h, s, b);
         updatePaintColorPreview();
+        if (paintRgbField != null) {
+            paintRgbField.setText(String.format("(%d,%d,%d)",
+                paintColor.getRed(), paintColor.getGreen(), paintColor.getBlue()));
+        }
     }
 
     private void updatePaintColorPreview() {
@@ -749,41 +794,66 @@ public class ColorPaletteEditor extends JPanel {
     public Color getPaintColor() {
         return paintColor;
     }
+
+    public int getPaintScheme() {
+        return currentScheme;
+    }
+
+    public void resetScheme() {
+        currentScheme = 0;
+        schemeSelector.setSelectedIndex(0);
+        
+        Component parent = this;
+        while (parent != null && !(parent instanceof RadMergerGUI)) {
+            parent = parent.getParent();
+        }
+        if (parent instanceof RadMergerGUI) {
+            Rad3DViewer viewer = ((RadMergerGUI) parent).getViewer();
+            if (viewer != null) {
+                viewer.setColorScheme(0);
+            }
+        }
+    }
+
+    public void syncScheme(int scheme) {
+        currentScheme = scheme;
+        schemeSelector.setSelectedIndex(scheme);
+        refreshColorGrid();
+    }
     
     private void selectColor(Color color) {
         if (paintMode) {
-            // In paint mode, clicking a color sets it as the paint color
-            paintColor = color;
-            paintModeBtn.setText("Paint Mode: ON (Selected)");
-            JOptionPane.showMessageDialog(this, 
-                "Paint color selected! Now click polygons on the car to paint them.", 
-                "Paint Mode", 
-                JOptionPane.INFORMATION_MESSAGE);
+            setEyedropperColor(color);
+            if (paintStatusLabel != null) {
+                paintStatusLabel.setText("Color set! Click polygons to paint.");
+            }
             return;
         }
-        
+
         // Normal color editing mode
         selectedColor = color;
         editorPanel.setVisible(true);
-        
-        // Load color into sliders
+
+        updatingFromRGB = true;  // block slider change listeners
         float[] hsb = Color.RGBtoHSB(color.getRed(), color.getGreen(), color.getBlue(), null);
         hueSlider.setValue((int)(hsb[0] * 360));
         saturationSlider.setValue((int)(hsb[1] * 100));
         brightnessSlider.setValue((int)(hsb[2] * 100));
-        
+        updatingFromRGB = false;
+
         colorPreview.setBackground(color);
         rgbField.setText(String.format("(%d,%d,%d)", color.getRed(), color.getGreen(), color.getBlue()));
-        
+
         controlPanel.revalidate();
         controlPanel.repaint();
     }
     
     private void updateColorFromSliders() {
+        if (updatingFromRGB) return;
         float h = hueSlider.getValue() / 360f;
         float s = saturationSlider.getValue() / 100f;
         float b = brightnessSlider.getValue() / 100f;
-        
+
         Color color = Color.getHSBColor(h, s, b);
         colorPreview.setBackground(color);
         rgbField.setText(String.format("(%d,%d,%d)", color.getRed(), color.getGreen(), color.getBlue()));
@@ -793,20 +863,15 @@ public class ColorPaletteEditor extends JPanel {
         try {
             String text = rgbField.getText().trim().replaceAll("[()]", "");
             String[] values = text.split(",");
-            
+
             int r = Math.max(0, Math.min(255, Integer.parseInt(values[0].trim())));
             int g = Math.max(0, Math.min(255, Integer.parseInt(values[1].trim())));
             int b = Math.max(0, Math.min(255, Integer.parseInt(values[2].trim())));
-            
+
             Color color = new Color(r, g, b);
-            
-            float[] hsb = Color.RGBtoHSB(r, g, b, null);
-            hueSlider.setValue((int)(hsb[0] * 360));
-            saturationSlider.setValue((int)(hsb[1] * 100));
-            brightnessSlider.setValue((int)(hsb[2] * 100));
-            
             colorPreview.setBackground(color);
-            
+            rgbField.setText(String.format("(%d,%d,%d)", r, g, b));
+
         } catch (Exception e) {
             JOptionPane.showMessageDialog(this, "Invalid RGB format", "Error", JOptionPane.ERROR_MESSAGE);
         }
@@ -815,19 +880,28 @@ public class ColorPaletteEditor extends JPanel {
     private void saveColor() {
         if (selectedColor == null) return;
         
-        float h = hueSlider.getValue() / 360f;
-        float s = saturationSlider.getValue() / 100f;
-        float b = brightnessSlider.getValue() / 100f;
-        Color newColor = Color.getHSBColor(h, s, b);
-        
-        // Get parent and save
+        Color newColor;
+        try {
+            String text = rgbField.getText().trim().replaceAll("[()]", "");
+            String[] values = text.split(",");
+            int r = Math.max(0, Math.min(255, Integer.parseInt(values[0].trim())));
+            int g = Math.max(0, Math.min(255, Integer.parseInt(values[1].trim())));
+            int b = Math.max(0, Math.min(255, Integer.parseInt(values[2].trim())));
+            newColor = new Color(r, g, b);
+        } catch (Exception e) {
+            // Fallback to sliders if RGB field is invalid
+            float h = hueSlider.getValue() / 360f;
+            float s = saturationSlider.getValue() / 100f;
+            float bv = brightnessSlider.getValue() / 100f;
+            newColor = Color.getHSBColor(h, s, bv);
+        }
+
         Component parent = this;
         while (parent != null && !(parent instanceof RadMergerGUI)) {
             parent = parent.getParent();
         }
-        
+
         if (parent instanceof RadMergerGUI) {
-            // Check if this is a rim color
             if (isRimColor(selectedColor)) {
                 ((RadMergerGUI) parent).replaceRimColorInFile(selectedColor, newColor, currentScheme);
             } else {
@@ -1183,5 +1257,21 @@ public class ColorPaletteEditor extends JPanel {
         panel.add(slider);
         
         return panel;
+    }
+
+    public void setEyedropperColor(Color color) {
+        paintColor = color;
+        float[] hsb = Color.RGBtoHSB(color.getRed(), color.getGreen(), color.getBlue(), null);
+        paintHueSlider.setValue((int)(hsb[0] * 360));
+        paintSatSlider.setValue((int)(hsb[1] * 100));
+        paintBrightSlider.setValue((int)(hsb[2] * 100));
+        if (paintRgbField != null) {
+            paintRgbField.setText(String.format("(%d,%d,%d)",
+                color.getRed(), color.getGreen(), color.getBlue()));
+        }
+        if (paintStatusLabel != null) {
+            paintStatusLabel.setText("Color set! Click polygons to paint.");
+        }
+        updatePaintColorPreview();
     }
 }

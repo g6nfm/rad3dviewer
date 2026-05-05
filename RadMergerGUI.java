@@ -166,6 +166,7 @@ public class RadMergerGUI extends JFrame {
         originalBtn.setMaximumSize(new Dimension(220, 35));
         originalBtn.addActionListener(e -> {
             viewer.setColorScheme(0);
+            colorPaletteEditor.syncScheme(0);
         });
 
         JButton scheme1Btn = new JButton("Color Scheme 1");
@@ -173,6 +174,7 @@ public class RadMergerGUI extends JFrame {
         scheme1Btn.setMaximumSize(new Dimension(220, 35));
         scheme1Btn.addActionListener(e -> {
             viewer.setColorScheme(1);
+            colorPaletteEditor.syncScheme(1);
         });
 
         JButton scheme2Btn = new JButton("Color Scheme 2");
@@ -180,6 +182,7 @@ public class RadMergerGUI extends JFrame {
         scheme2Btn.setMaximumSize(new Dimension(220, 35));
         scheme2Btn.addActionListener(e -> {
             viewer.setColorScheme(2);
+            colorPaletteEditor.syncScheme(2);
         });
 
         colorSchemePanel.add(Box.createVerticalStrut(10));

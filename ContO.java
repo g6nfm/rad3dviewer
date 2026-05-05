@@ -36,6 +36,15 @@ public class ContO {
     private boolean noline = false;
     public int grat = 0;
 
+<<<<<<< Updated upstream
+=======
+    private int[] cachedATP = null;
+    public boolean wholeHover = false;
+
+    public Color hoverColor    = new Color(0, 0, 255, 60);
+    public Color selectedColor = new Color(0, 80, 255, 80);
+
+>>>>>>> Stashed changes
     public final int[] keyx = new int[8];
     public final int[] keyz = new int[8];
 
@@ -891,7 +900,16 @@ public class ContO {
                 }
 
                 for (int l3 = 0; l3 < npl; l3++) {
+<<<<<<< Updated upstream
                     boolean isHovered = (ai1[l3] == hoveredPoly);
+=======
+                    p[l3].hoverColor    = hoverColor;
+                    p[l3].selectedColor = selectedColor;
+                }
+
+                for (int l3 = 0; l3 < npl; l3++) {
+                    boolean isHovered = wholeHover || (ai1[l3] == hoveredPoly);
+>>>>>>> Stashed changes
                     boolean isSelected = selectedPolygons != null && selectedPolygons.contains(ai1[l3]);  // FIX: use ai1[l3] not i
                     p[ai1[l3]].d(rd, x - Medium.x, y - Medium.y, z - Medium.z, xz, xy, zy, wxz, wzy, noline, l, isHovered, isSelected);
                 }
