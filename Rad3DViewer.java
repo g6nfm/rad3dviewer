@@ -59,6 +59,9 @@ public class Rad3DViewer extends JPanel
     setLayout(new BorderLayout());
     //setPreferredSize(new Dimension(1024, 768));
 
+    javax.swing.Timer repaintTimer = new javax.swing.Timer(8, e -> repaint());
+    repaintTimer.start();
+
     medium = new Medium();
 
     // Create layered pane for overlay
@@ -234,12 +237,13 @@ public class Rad3DViewer extends JPanel
                 int w = getWidth();
                 int h = getHeight();
                 if (w <= 0 || h <= 0) return;
-
                 if (cachedFrame == null || cachedFrame.getWidth() != w || cachedFrame.getHeight() != h
                         || lastRenderedAngle != modelAngle || cacheInvalid) {
                     cachedFrame = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
                     Graphics2D cg = cachedFrame.createGraphics();
+                    Medium.trk = true;
                     renderScene(cg, w, h);
+                    Medium.trk = false;
                     cg.dispose();
                     lastRenderedAngle = modelAngle;
                     cacheInvalid = false;
@@ -715,38 +719,39 @@ public class Rad3DViewer extends JPanel
                 break;
 
             case KeyEvent.VK_1:
-                // Front 3/4 view
                 m.zy = 0; modelAngle = 135;
+                if (carModel != null) m.y = 250 - carModel.grat;
                 repaint();
                 break;
 
             case KeyEvent.VK_2:
-                // Side view
                 m.zy = 0; modelAngle = 90;
+                if (carModel != null) m.y = 250 - carModel.grat;
                 repaint();
                 break;
 
             case KeyEvent.VK_3:
-                // Rear 3/4 view
                 m.zy = 0; modelAngle = 45;
+                if (carModel != null) m.y = 250 - carModel.grat;
                 repaint();
                 break;
 
             case KeyEvent.VK_4:
                 // Roof + hood view
                 m.zy = 90; modelAngle = 90;
+                m.y = 30;
                 repaint();
                 break;
 
             case KeyEvent.VK_5:
-                // Front Bumper View
                 m.zy = 0; modelAngle = 180;
+                if (carModel != null) m.y = 250 - carModel.grat;
                 repaint();
                 break;
 
             case KeyEvent.VK_6:
-                // Rear bumper view
                 m.zy = 0; modelAngle = 0;
+                if (carModel != null) m.y = 250 - carModel.grat;
                 repaint();
                 break;
         }

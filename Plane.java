@@ -47,6 +47,8 @@ public class Plane {
     public int flx;
     public boolean noOutline;
 
+    public float f1Smooth = 0.8F;
+
     public Color hoverColor    = new Color(0, 0, 255, 60);
     public Color selectedColor = new Color(0, 80, 255, 80);
 
@@ -935,6 +937,7 @@ public class Plane {
         Utility.rot(ai, ai2, i, j, i1, n);
         Utility.rot(ai2, ai1, j, k, j1, n);
         Utility.rot(ai, ai1, i, k, l, n);
+        
         // Use 3D distances like deltaf does, for consistent f1 ratio
         if (i1 != 0 || j1 != 0 || l != 0) {
             projf = 1.0F;
@@ -953,6 +956,7 @@ public class Plane {
             } while (++j3 < 3);
             projf = projf / 3F;
         }
+        
         Utility.rot(ai, ai1, Medium.cx, Medium.cz, Medium.xz, n);
         boolean flag1 = false;
         int ai7[] = new int[n];
@@ -980,6 +984,20 @@ public class Plane {
             int k6 = k5;
             k5 = i6;
             i6 = k6;
+        }
+        if (Utility.spy(ai[k5], ai1[k5]) > Utility.spy(ai[i6], ai1[i6])) {
+            flag1 = true;
+            int l6 = 0;
+            for (int k7 = 0; k7 < n; k7++) {
+                if (ai1[k7] < 50 && ai2[k7] > Medium.cy) {
+                    flag1 = false;
+                } else if (ai2[k7] == ai2[0]) {
+                    l6++;
+                }
+            }
+            if (l6 == n && ai2[0] > Medium.cy) {
+                flag1 = false;
+            }
         }
         Utility.rot(ai2, ai1, Medium.cy, Medium.cz, Medium.zy, n);
         boolean flag2 = true;
@@ -1227,14 +1245,19 @@ public class Plane {
                 if (gr == -5) {
                     f1 = 0.55F;
                 }
+                if (gr != -7 && !Medium.trk && flag1) {
+                    f1 = 0.32F;
+                }
             } else {
                 if (f1 > 1.0F) {
                     f1 = 1.0F;
                 }
-                if (f1 < 0.59999999999999998D) {
+                if (f1 < 0.59999999999999998D || (!Medium.trk && flag1)) {
                     f1 = 0.6F;
                 }
             }
+            f1Smooth += (f1 - f1Smooth) * 0.15F;
+            f1 = f1Smooth;
             Color color;
             if (!Medium.trk) {
                 color = Color.getHSBColor(hsb[0], hsb[1], hsb[2] * f1);
