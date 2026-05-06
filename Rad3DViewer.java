@@ -35,11 +35,24 @@ public class Rad3DViewer extends JPanel
 
     private int cameraDistance = 0; // Stores zoom offset
 
+    private int cameraYOffset = -300;
+    private int cameraGround = 650;
+
+    private boolean isPreviewViewer = false;
+
+    public void setPreviewViewer(boolean b) {
+        isPreviewViewer = b;
+    }
 
     private boolean isWheelViewer = false;
 
     public void setWheelViewer(boolean b) {
         isWheelViewer = b;
+    }
+
+    public void setCameraSettings(int yOffset, int ground) {
+        this.cameraYOffset = yOffset;
+        this.cameraGround = ground;
     }
 
     public Rad3DViewer() {
@@ -56,6 +69,16 @@ public class Rad3DViewer extends JPanel
     drawingPanel.setOpaque(false);
 
     selectionToolbar = new SelectionToolbar();
+
+    selectionToolbar.setChangeColorAction(() -> changeSelectedPolygonsColor());
+    selectionToolbar.setTranslateAction(() -> translateSelectedPolygons());
+    selectionToolbar.setGoToCodeAction(() -> goToSelectedPolygonCode());
+    selectionToolbar.setRemoveAction(() -> removeSelectedPolygons());
+    selectionToolbar.setCloseAction(() -> {
+        selectedPolygons.clear();
+        selectionToolbar.clearSelection();
+        repaint();
+    });
 
     // Add component listener to THIS panel (Rad3DViewer) to resize children
     addComponentListener(new ComponentAdapter() {
@@ -103,6 +126,12 @@ public class Rad3DViewer extends JPanel
     public void addNotify() {
         super.addNotify();
         requestFocusInWindow();
+        if (isPreviewViewer) {
+            SwingUtilities.invokeLater(() -> {
+                drawingPanel.invalidateCache();
+                repaint();
+            });
+        }
     }
 
     /**
@@ -113,17 +142,46 @@ public class Rad3DViewer extends JPanel
         try {
             byte[] fileData = Files.readAllBytes(Paths.get(filePath));
             carModel = new ContO(fileData, medium);
-
-            carModel.x = Medium.cx;
             carModel.y = 250 - carModel.grat;
-            carModel.z = 650;
+            if (isPreviewViewer) {
+                carModel.y -= 100;
+                carModel.z = 650;
+            } else {
+                carModel.z = 650;
+            }
             carModel.zy = 0;
             carModel.xz = 0;
-
+            if (isPreviewViewer) {
+                carModel.applySkin(colorScheme);
+            }
+            if (!isPreviewViewer && !isWheelViewer) {
+                modelAngle = 135;
+            }
         } catch (IOException ex) {
             ex.printStackTrace();
         }
-        repaint();
+        if (isPreviewViewer) {
+            SwingUtilities.invokeLater(() -> SwingUtilities.invokeLater(() -> {
+                int w = Math.max(1, drawingPanel.getWidth());
+                int h = Math.max(1, drawingPanel.getHeight());
+                java.awt.image.BufferedImage tmp = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+                Graphics2D tg = tmp.createGraphics();
+                drawingPanel.renderScene(tg, w, h);
+                tg.dispose();
+                drawingPanel.invalidateCache();
+                repaint();
+            }));
+        } else {
+            SwingUtilities.invokeLater(() -> SwingUtilities.invokeLater(() -> {
+                int w = Math.max(1, drawingPanel.getWidth());
+                int h = Math.max(1, drawingPanel.getHeight());
+                java.awt.image.BufferedImage tmp = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+                Graphics2D tg = tmp.createGraphics();
+                drawingPanel.renderScene(tg, w, h);
+                tg.dispose();
+                repaint();
+            }));
+        }
     }
 
     /**
@@ -143,13 +201,18 @@ public class Rad3DViewer extends JPanel
             wheelModel.z = 400; 
             wheelModel.zy = 0;
             wheelModel.xz = 0;
-
+            wheelAngle = 90;
         } catch (IOException ex) {
             ex.printStackTrace();
         }
 
-        repaint();
-    }
+            repaint();
+        }
+
+        public void invalidateCache() {
+            drawingPanel.invalidateCache();
+            repaint();
+        }
 
         private class DrawingPanel extends JPanel {
 
@@ -157,68 +220,81 @@ public class Rad3DViewer extends JPanel
             //setPreferredSize(new Dimension(1024, 768));
         }
 
+        private java.awt.image.BufferedImage cachedFrame = null;
+        private double lastRenderedAngle = Double.NaN;
+        private boolean cacheInvalid = true;
+
+        public void invalidateCache() {
+            cacheInvalid = true;
+        }
+
         @Override
         protected void paintComponent(Graphics g) {
-            super.paintComponent(g);
+            if (isPreviewViewer) {
+                int w = getWidth();
+                int h = getHeight();
+                if (w <= 0 || h <= 0) return;
+
+                if (cachedFrame == null || cachedFrame.getWidth() != w || cachedFrame.getHeight() != h
+                        || lastRenderedAngle != modelAngle || cacheInvalid) {
+                    cachedFrame = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+                    Graphics2D cg = cachedFrame.createGraphics();
+                    renderScene(cg, w, h);
+                    cg.dispose();
+                    lastRenderedAngle = modelAngle;
+                    cacheInvalid = false;
+                }
+                g.drawImage(cachedFrame, 0, 0, null);
+                return;
+            }
+            renderScene((Graphics2D) g, getWidth(), getHeight());
+        }
+
+        void renderScene(Graphics2D g2d, int pw, int ph) {
+            // --- paste everything from the old paintComponent here ---
+            // but replace getWidth() with pw and getHeight() with ph
+            // and remove the "super.paintComponent(g)" call and the null check at the top
+            // (keep the null check but adapt it to use g2d)
+
+            g2d.setColor(getBackground());
+            g2d.fillRect(0, 0, pw, ph);
 
             if (carModel == null && wheelModel == null) {
-                g.drawString("No model loaded.", getWidth() / 2 - 50, getHeight() / 2);
+                g2d.setColor(Color.GRAY);
+                g2d.drawString("No model loaded.", pw / 2 - 50, ph / 2);
                 return;
             }
 
-            Graphics2D g2d = (Graphics2D) g;
             g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-            int pw = getWidth();
-            int ph = getHeight();
-
             Medium.setViewport(0, 0, pw, ph);
-
-            // Reset core Medium stuff every frame, so viewers are independent
             Medium.w  = pw;
             Medium.h  = ph;
             Medium.cx = pw / 2;
-            Medium.cy = ph / 2;  // ADD THIS LINE
-            Medium.cz = ph / 8;  // Main viewer with zoom
-            // Different camera for wheel vs car viewer
-            
+            Medium.cy = ph / 2;
+            Medium.cz = ph / 8;
 
-            // --------------------------
-            // ENVIRONMENT PER VIEWER
-            // --------------------------
             if (isWheelViewer) {
-                // Plain background for wheel panel
-                //g2d.setColor(Color.WHITE);
-                //g2d.fillRect(0, 0, pw, ph);
-
                 Medium.y = 0;
                 Medium.ground = 250;
                 Medium.crs = false;
                 Medium.fogd = 3;
                 Medium.fadeFrom(3000);
-
                 Medium.d(g2d);
-
             } else {
-                // Car viewer environment
-                Medium.y = -300;
-                Medium.ground = 650;
+                Medium.y = cameraYOffset;
+                Medium.ground = cameraGround;
                 Medium.crs = true;
                 Medium.fogd = 8;
                 Medium.fadeFrom(2000);
-
-                Medium.d(g2d); // draw sky/ground only in car viewer
+                Medium.d(g2d);
             }
 
-            // ============ CAR MODEL ============
             if (carModel != null && !isWheelViewer) {
                 carModel.x = Medium.cx;
-
-                // Find which polygon is hovered
-                hoveredPolyIndex = findHoveredPoly(carModel);
+                hoveredPolyIndex = isPreviewViewer ? -1 : findHoveredPoly(carModel);
 
                 int nPlanes = carModel.npl;
-
                 int[][] backupOx = new int[nPlanes][];
                 int[][] backupOz = new int[nPlanes][];
 
@@ -228,7 +304,7 @@ public class Rad3DViewer extends JPanel
                     backupOz[i] = p.oz.clone();
                 }
 
-                carModel.applySkin(colorScheme);
+                if (!isPreviewViewer) carModel.applySkin(colorScheme);
 
                 int totalX = 0, totalZ = 0, vcount = 0;
                 for (int i = 0; i < nPlanes; i++) {
@@ -252,24 +328,17 @@ public class Rad3DViewer extends JPanel
                     for (int v = 0; v < p.n; v++) {
                         int ox = p.ox[v];
                         int oz = p.oz[v];
-
                         int rx = ox - centerX;
                         int rz = oz - centerZ;
-
                         p.ox[v] = centerX + (int) (rx * cosA - rz * sinA);
                         p.oz[v] = centerZ + (int) (rx * sinA + rz * cosA);
                     }
                 }
 
+                int savedAdv = Medium.adv;
+                Medium.adv = 9999;
                 carModel.d(g2d, hoveredPolyIndex, selectedPolygons);
-
-                // After calling carModel.d(g2d, hoveredPolyIndex);
-                // Highlight selected polygons
-                for (int selectedPoly : selectedPolygons) {
-                    if (selectedPoly >= 0 && selectedPoly < carModel.npl) {
-                        // Draw selection indicator (you can customize this)
-                    }
-                }
+                Medium.adv = savedAdv;
 
                 for (int i = 0; i < nPlanes; i++) {
                     Plane p = carModel.p[i];
@@ -278,11 +347,8 @@ public class Rad3DViewer extends JPanel
                 }
             }
 
-            // ============ WHEEL MODEL ============
             if (wheelModel != null) {
-                //wheelModel.x = Medium.cx;  // Re-center every frame
                 int wn = wheelModel.npl;
-
                 int[][] wBackupOx = new int[wn][];
                 int[][] wBackupOz = new int[wn][];
 
@@ -292,7 +358,6 @@ public class Rad3DViewer extends JPanel
                     wBackupOz[i] = p.oz.clone();
                 }
 
-                // Rotate wheel around origin (0,0,0) for proper centering
                 float wAng = (float) Math.toRadians(wheelAngle);
                 float wCos = (float) Math.cos(wAng);
                 float wSin = (float) Math.sin(wAng);
@@ -302,8 +367,6 @@ public class Rad3DViewer extends JPanel
                     for (int v = 0; v < p.n; v++) {
                         int ox = p.ox[v];
                         int oz = p.oz[v];
-
-                        // Rotate around origin (0,0,0)
                         p.ox[v] = (int) (ox * wCos - oz * wSin);
                         p.oz[v] = (int) (ox * wSin + oz * wCos);
                     }
@@ -444,13 +507,33 @@ public class Rad3DViewer extends JPanel
         requestFocusInWindow();
         
         // Left click - paint mode takes priority
-        if (SwingUtilities.isLeftMouseButton(e) && hoveredPolyIndex != -1) {
+        if ((SwingUtilities.isLeftMouseButton(e) || SwingUtilities.isRightMouseButton(e)) && hoveredPolyIndex != -1) {
             
             // Check if in paint mode FIRST
             if (isInPaintMode()) {
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    // Eyedropper - pick color from polygon
+                    ContO model = getActiveModel();
+                    if (model != null && hoveredPolyIndex < model.npl) {
+                        Plane poly = model.p[hoveredPolyIndex];
+                        Color pickedColor = new Color(poly.oc[0], poly.oc[1], poly.oc[2]);
+                        Component parent = this;
+                        while (parent != null && !(parent instanceof RadMergerGUI)) {
+                            parent = parent.getParent();
+                        }
+                        if (parent instanceof RadMergerGUI) {
+                            ColorPaletteEditor editor = ((RadMergerGUI) parent).getColorPaletteEditor();
+                            if (editor != null) {
+                                editor.setEyedropperColor(pickedColor);
+                            }
+                        }
+                    }
+                    repaint();
+                    return;
+                }
                 paintPolygon(hoveredPolyIndex);
                 repaint();
-                return;  // Don't process selection or toolbar
+                return;
             }
             
             // Normal selection mode
@@ -475,6 +558,12 @@ public class Rad3DViewer extends JPanel
             
             repaint();
             return;
+        }
+
+        // Clear selection when clicking empty space
+        if (hoveredPolyIndex == -1) {
+            selectedPolygons.clear();
+            selectionToolbar.clearSelection();
         }
         
         // Otherwise - normal drag behavior
@@ -537,12 +626,11 @@ public class Rad3DViewer extends JPanel
 
     @Override
     public void mouseWheelMoved(MouseWheelEvent e) {
+        if (isPreviewViewer) return;
         ContO m = getActiveModel();
-        if (m == null) {
-            return;
-        }
+        if (m == null) return;
         int notches = e.getWheelRotation();
-        m.z += notches * 20;  // Store zoom offset
+        m.z += notches * 20;
         repaint();
     }
 
@@ -556,24 +644,17 @@ public class Rad3DViewer extends JPanel
 
         int key = e.getKeyCode();
         switch (key) {
-            case KeyEvent.VK_RIGHT:
-                if (m == carModel) modelAngle += 5;
-                else wheelAngle += 5;
-                repaint();
-                break;
-            case KeyEvent.VK_LEFT:
-                if (m == carModel) modelAngle -= 5;
-                else wheelAngle -= 5;
-                repaint();
-                break;
-            case KeyEvent.VK_UP:
-                m.y += 5;
-                repaint();
-                break;
-            case KeyEvent.VK_DOWN:
-                m.y -= 5;
-                repaint();
-                break;
+        case KeyEvent.VK_RIGHT:
+            if (m == carModel) modelAngle += 5;
+            else wheelAngle += 5;
+            repaint();
+            break;
+
+        case KeyEvent.VK_LEFT:
+            if (m == carModel) modelAngle -= 5;
+            else wheelAngle -= 5;
+            repaint();
+            break;
             case KeyEvent.VK_PLUS:
             case KeyEvent.VK_EQUALS:  // '+' key (with or without shift)
                 m.y += 5;
@@ -586,6 +667,86 @@ public class Rad3DViewer extends JPanel
             case KeyEvent.VK_C:
                 colorScheme = (colorScheme + 1) % 4;
                 System.out.println("Color scheme set to " + colorScheme);
+                repaint();
+                break;
+            case KeyEvent.VK_A:
+                if (m == carModel) {
+                    modelAngle -= 2;
+                    Component parentA = this;
+                    while (parentA != null && !(parentA instanceof RadMergerGUI)) parentA = parentA.getParent();
+                    if (parentA instanceof RadMergerGUI) ((RadMergerGUI) parentA).setSharedModelAngle(modelAngle);
+                } else wheelAngle -= 2;
+                repaint();
+                break;
+
+            case KeyEvent.VK_D:
+                if (m == carModel) {
+                    modelAngle += 2;
+                    Component parentD = this;
+                    while (parentD != null && !(parentD instanceof RadMergerGUI)) parentD = parentD.getParent();
+                    if (parentD instanceof RadMergerGUI) ((RadMergerGUI) parentD).setSharedModelAngle(modelAngle);
+                } else wheelAngle += 2;
+                repaint();
+                break;
+
+            case KeyEvent.VK_W:
+            case KeyEvent.VK_UP:
+                m.zy = (m.zy + 2) % 360;
+                repaint();
+                break;
+
+            case KeyEvent.VK_S:
+            case KeyEvent.VK_DOWN:
+                m.zy = (m.zy - 2 + 360) % 360;
+                repaint();
+                break;
+            case KeyEvent.VK_R:
+                // Reset to flat
+                m.zy = 0;
+                m.xy = 0;
+                modelAngle = 135;
+                if (carModel != null) m.y = 250 - carModel.grat;
+                if (m == carModel) {
+                    Component parentR = this;
+                    while (parentR != null && !(parentR instanceof RadMergerGUI)) parentR = parentR.getParent();
+                    if (parentR instanceof RadMergerGUI) ((RadMergerGUI) parentR).setSharedModelAngle(modelAngle);
+                }
+                repaint();
+                break;
+
+            case KeyEvent.VK_1:
+                // Front 3/4 view
+                m.zy = 0; modelAngle = 135;
+                repaint();
+                break;
+
+            case KeyEvent.VK_2:
+                // Side view
+                m.zy = 0; modelAngle = 90;
+                repaint();
+                break;
+
+            case KeyEvent.VK_3:
+                // Rear 3/4 view
+                m.zy = 0; modelAngle = 45;
+                repaint();
+                break;
+
+            case KeyEvent.VK_4:
+                // Roof + hood view
+                m.zy = 90; modelAngle = 90;
+                repaint();
+                break;
+
+            case KeyEvent.VK_5:
+                // Front Bumper View
+                m.zy = 0; modelAngle = 180;
+                repaint();
+                break;
+
+            case KeyEvent.VK_6:
+                // Rear bumper view
+                m.zy = 0; modelAngle = 0;
                 repaint();
                 break;
         }
@@ -967,5 +1128,14 @@ public class Rad3DViewer extends JPanel
 
     public boolean isToolbarVisible() {
         return selectionToolbar != null && selectionToolbar.isVisible();
+    }
+
+    public void setModelAngle(double angle) {
+        this.modelAngle = angle;
+        repaint();
+    }
+
+    public double getModelAngle() {
+        return modelAngle;
     }
 }

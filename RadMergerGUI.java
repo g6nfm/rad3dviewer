@@ -29,11 +29,16 @@ public class RadMergerGUI extends JFrame {
     private String mergedFilePath = null;
 
     private Rad3DViewer viewer;
+    private Rad3DViewer preview0, preview1, preview2, preview3;
+
+    private JPanel previewPanel0, previewPanel1, previewPanel2, previewPanel3;
 
     private WheelAnchorEditor wheelAnchorEditor;
     private ColorPaletteEditor colorPaletteEditor;
     
     private JButton scheme3Btn;
+
+    private double sharedModelAngle = 0;
 
     private File carsFolder = new File("cars");
 
@@ -215,16 +220,71 @@ public class RadMergerGUI extends JFrame {
         refreshDropdown();
         refreshWheelDropdown();     // wheels
 
+        // Scheme preview panel
+        JPanel schemePreviewPanel = new JPanel();
+        schemePreviewPanel.setLayout(new BoxLayout(schemePreviewPanel, BoxLayout.X_AXIS));
+        schemePreviewPanel.setPreferredSize(new Dimension(1320, 180));
+        schemePreviewPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
-        // --- Top drag-and-drop slots ---
-        JPanel dropPanel = new JPanel(new GridLayout(1, 3, 10, 10));
-        filePanel1 = new FileDropPanel("Slot 1 (.rad file)", 1);
-        filePanel2 = new FileDropPanel("Slot 2 (.rad file)", 2);
-        filePanel3 = new FileDropPanel("Slot 3 (.rad file)", 3);
-        dropPanel.add(filePanel1);
-        dropPanel.add(filePanel2);
-        dropPanel.add(filePanel3);
-        add(dropPanel, BorderLayout.NORTH);
+        preview0 = new Rad3DViewer();
+        preview1 = new Rad3DViewer();
+        preview2 = new Rad3DViewer();
+        preview3 = new Rad3DViewer();
+
+        preview0.setColorScheme(0);
+        preview1.setColorScheme(1);
+        preview2.setColorScheme(2);
+        preview3.setColorScheme(3);
+
+        preview0.setCameraSettings(0, 450);
+        preview1.setCameraSettings(0, 450);
+        preview2.setCameraSettings(0, 450);
+        preview3.setCameraSettings(0, 450);
+
+        preview0.setPreviewViewer(true);
+        preview1.setPreviewViewer(true);
+        preview2.setPreviewViewer(true);
+        preview3.setPreviewViewer(true);
+
+        preview0.setModelAngle(135);
+        preview1.setModelAngle(135);
+        preview2.setModelAngle(135);
+        preview3.setModelAngle(135);
+
+        previewPanel0 = new JPanel(new BorderLayout());
+        previewPanel0.setBorder(BorderFactory.createTitledBorder("Original"));
+        previewPanel0.add(preview0);
+
+        previewPanel1 = new JPanel(new BorderLayout());
+        previewPanel1.setBorder(BorderFactory.createTitledBorder("Scheme 1"));
+        previewPanel1.add(preview1);
+
+        previewPanel2= new JPanel(new BorderLayout());
+        previewPanel2.setBorder(BorderFactory.createTitledBorder("Scheme 2"));
+        previewPanel2.add(preview2);
+
+        previewPanel3 = new JPanel(new BorderLayout());
+        previewPanel3.setBorder(BorderFactory.createTitledBorder("Scheme 3"));
+        previewPanel3.add(preview3);
+
+        previewPanel0.setPreferredSize(new Dimension(320, 170));
+        previewPanel0.setMaximumSize(new Dimension(320, 170));
+        previewPanel1.setPreferredSize(new Dimension(320, 170));
+        previewPanel1.setMaximumSize(new Dimension(320, 170));
+        previewPanel2.setPreferredSize(new Dimension(320, 170));
+        previewPanel2.setMaximumSize(new Dimension(320, 170));
+        previewPanel3.setPreferredSize(new Dimension(320, 170));
+        previewPanel3.setMaximumSize(new Dimension(320, 170));
+
+        schemePreviewPanel.add(Box.createHorizontalGlue());
+        schemePreviewPanel.add(previewPanel0);
+        schemePreviewPanel.add(previewPanel1);
+        schemePreviewPanel.add(previewPanel2);
+        schemePreviewPanel.add(previewPanel3);
+        schemePreviewPanel.add(Box.createHorizontalGlue());
+
+        add(schemePreviewPanel, BorderLayout.NORTH);
+        
 
         // --- Tabs ---
         tabbedPane = new JTabbedPane();
@@ -342,13 +402,24 @@ public class RadMergerGUI extends JFrame {
 
         add(tabbedPane, BorderLayout.CENTER);
 
-        // --- Bottom merge + status ---
-        JPanel bottomPanel = new JPanel();
-        JButton mergeButton = new JButton("Merge");
-        mergeButton.addActionListener(e -> onMerge());
-        bottomPanel.add(mergeButton);
-        statusLabel = new JLabel("Drag and drop your .rad files into the slots above.");
-        bottomPanel.add(statusLabel);
+        JPanel bottomPanel = new JPanel(new BorderLayout());
+
+        JPanel statusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        statusLabel = new JLabel("No car loaded.");
+        statusPanel.add(statusLabel);
+        bottomPanel.add(statusPanel, BorderLayout.WEST);
+
+        JLabel controlsLabel = new JLabel(
+            "<html><center>" +
+            "Horizontal Rotate: Click & Drag / A/D / ←/→ &nbsp;|&nbsp; Vertical Rotate: W/S / ↑/↓ &nbsp;|&nbsp; Raise/Lower: +/- &nbsp;|&nbsp; Zoom: Scroll Wheel &nbsp;|&nbsp; Multi-Select: Ctrl+Click &nbsp;|&nbsp; Cycle Skin: C &nbsp;|&nbsp; Paint Mode: Right Click = Eyedropper<br>" +
+            "Preset Views: &nbsp;&nbsp;R: Default View &nbsp;&nbsp;|&nbsp;&nbsp; 1: Front 3/4 View &nbsp;&nbsp;|&nbsp;&nbsp; 2: Side View &nbsp;&nbsp;|&nbsp;&nbsp; 3: Rear 3/4 View &nbsp;&nbsp;|&nbsp;&nbsp; 4: Roof &amp; Hood View &nbsp;&nbsp;|&nbsp;&nbsp; 5: Front Bumper View &nbsp;&nbsp;|&nbsp;&nbsp; 6: Rear Bumper View" +
+            "</center></html>"
+        );
+        controlsLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        controlsLabel.setForeground(Color.GRAY);
+        controlsLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        bottomPanel.add(controlsLabel, BorderLayout.CENTER);
+
         add(bottomPanel, BorderLayout.SOUTH);
 
         // --- Toolbar actions ---
@@ -375,6 +446,7 @@ public class RadMergerGUI extends JFrame {
         // ADD THESE LINES TO RELOAD THE VIEWER:
         try {
             viewer.loadRadFile(mergedFilePath);
+            loadCarIntoAllPreviews(mergedFilePath);
             viewerContainer.revalidate();
             viewerContainer.repaint();
         } catch (Exception ex) {
@@ -510,7 +582,8 @@ public class RadMergerGUI extends JFrame {
             
             radTextArea.setText(result.toString());
             Files.write(Paths.get(mergedFilePath), result.toString().getBytes());
-            viewer.loadRadFile(mergedFilePath);
+                        viewer.loadRadFile(mergedFilePath);
+                        loadCarIntoAllPreviews(mergedFilePath);;
             viewerContainer.revalidate();
             viewerContainer.repaint();
             
@@ -561,7 +634,8 @@ public class RadMergerGUI extends JFrame {
 
             // Update 3D viewer
             
-            viewer.loadRadFile(mergedFilePath);
+                        viewer.loadRadFile(mergedFilePath);
+            loadCarIntoAllPreviews(mergedFilePath);;
             viewerContainer.revalidate();
             viewerContainer.repaint();
 
@@ -649,7 +723,8 @@ public class RadMergerGUI extends JFrame {
             mergedFilePath = f.getAbsolutePath();
 
             try {
-                viewer.loadRadFile(mergedFilePath);
+                            viewer.loadRadFile(mergedFilePath);
+            loadCarIntoAllPreviews(mergedFilePath);;
                 viewerContainer.revalidate();
                 viewerContainer.repaint();
 
@@ -658,7 +733,7 @@ public class RadMergerGUI extends JFrame {
                     String content = new String(Files.readAllBytes(Paths.get(mergedFilePath)));
                     detectSchemes(content);
                 } catch (Exception ex) { /* silent */ }
-                tabbedPane.setSelectedIndex(1);
+                tabbedPane.setSelectedIndex(0);
 
                 statusLabel.setText("Loaded: " + f.getName());
             } catch (Exception ex) {
@@ -1789,7 +1864,8 @@ public class RadMergerGUI extends JFrame {
             Files.write(Paths.get(mergedFilePath), result.toString().getBytes());
             
             // RELOAD THE VIEWER with the updated file
-            viewer.loadRadFile(mergedFilePath);
+                        viewer.loadRadFile(mergedFilePath);
+            loadCarIntoAllPreviews(mergedFilePath);;
             viewerContainer.revalidate();
             viewerContainer.repaint();
             
@@ -1931,7 +2007,8 @@ public class RadMergerGUI extends JFrame {
             // Save and reload
             radTextArea.setText(result.toString());
             Files.write(Paths.get(mergedFilePath), result.toString().getBytes());
-            viewer.loadRadFile(mergedFilePath);
+                        viewer.loadRadFile(mergedFilePath);
+            loadCarIntoAllPreviews(mergedFilePath);;
             viewerContainer.revalidate();
             viewerContainer.repaint();
             
@@ -2025,7 +2102,8 @@ public class RadMergerGUI extends JFrame {
             
             radTextArea.setText(result.toString());
             Files.write(Paths.get(mergedFilePath), result.toString().getBytes());
-            viewer.loadRadFile(mergedFilePath);
+                        viewer.loadRadFile(mergedFilePath);
+            loadCarIntoAllPreviews(mergedFilePath);;
             viewerContainer.revalidate();
             viewerContainer.repaint();
             
@@ -2220,7 +2298,8 @@ public class RadMergerGUI extends JFrame {
             Files.write(Paths.get(mergedFilePath), result.toString().getBytes());
             
             // Reload viewer to show changes
-            viewer.loadRadFile(mergedFilePath);
+                        viewer.loadRadFile(mergedFilePath);
+            loadCarIntoAllPreviews(mergedFilePath);;
             viewerContainer.revalidate();
             viewerContainer.repaint();
             
@@ -2297,12 +2376,34 @@ public class RadMergerGUI extends JFrame {
     }
 
     private void detectSchemes(String content) {
-        boolean hasScheme3 = content.contains("c3(");
-        scheme3Btn.setVisible(hasScheme3);
-        colorPaletteEditor.setAvailableSchemes(hasScheme3 ? 4 : 3);
+        boolean hasScheme2 = content.contains("c1(");
+        boolean hasScheme3 = content.contains("c2(");
+        boolean hasScheme4 = content.contains("c3(");
+
+        scheme3Btn.setVisible(hasScheme4);
+        colorPaletteEditor.setAvailableSchemes(hasScheme4 ? 4 : 3);
+
+        previewPanel1.setVisible(hasScheme2);
+        previewPanel2.setVisible(hasScheme3);
+        previewPanel3.setVisible(hasScheme4);
     }
 
     public ColorPaletteEditor getColorPaletteEditor() {
         return colorPaletteEditor;
+    }
+
+    private void loadCarIntoAllPreviews(String filePath) {
+        preview0.loadRadFile(filePath);
+        preview1.loadRadFile(filePath);
+        preview2.loadRadFile(filePath);
+        preview3.loadRadFile(filePath);
+    }
+
+    public void setSharedModelAngle(double angle) {
+        this.sharedModelAngle = angle;
+        preview0.setModelAngle(angle);
+        preview1.setModelAngle(angle);
+        preview2.setModelAngle(angle);
+        preview3.setModelAngle(angle);
     }
 }

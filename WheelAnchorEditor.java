@@ -133,13 +133,18 @@ public class WheelAnchorEditor extends JPanel {
     controlPanel.repaint();
 }
 
-// Parse wheels directly from file text
 private List<WheelData> parseWheelsFromFile(String content) {
     List<WheelData> wheels = new ArrayList<>();
     String[] lines = content.split("\n");
+    int currentGwgr = 0;
     
     for (String line : lines) {
         String trimmed = line.trim();
+        if (trimmed.startsWith("gwgr(")) {
+            try {
+                currentGwgr = Integer.parseInt(trimmed.substring(5, trimmed.indexOf(')')).trim());
+            } catch (Exception e) { /* skip */ }
+        }
         if (trimmed.startsWith("w(")) {
             try {
                 int start = trimmed.indexOf('(') + 1;
@@ -157,11 +162,10 @@ private List<WheelData> parseWheelsFromFile(String content) {
                 if (values.length > 6) {
                     wheel.modelId = Integer.parseInt(values[6].trim());
                 }
+                wheel.gwgr = currentGwgr;
                 
                 wheels.add(wheel);
-            } catch (Exception e) {
-                // Skip invalid lines
-            }
+            } catch (Exception e) { /* skip */ }
         }
     }
     
@@ -170,15 +174,15 @@ private List<WheelData> parseWheelsFromFile(String content) {
 
 // Data class to hold wheel parameters
 public class WheelData {
-    public int x, y, z, rotation, width, height, modelId;
+    public int x, y, z, rotation, width, height, modelId, gwgr;
 }
     
     private JPanel createHeaderRow() {
         JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         header.setOpaque(false);
         
-        String[] labels = {"Axle", "±X", "Y", "Z", "Width", "Height", "Model"};
-        int[] widths = {50, 50, 50, 50, 60, 60, 60};
+        String[] labels = {"Axle", "±X", "Y", "Z", "Width", "Height", "Model", "gwgr"};
+        int[] widths = {50, 50, 50, 50, 60, 60, 60, 50};
         
         for (int i = 0; i < labels.length; i++) {
             JLabel label = new JLabel(labels[i]);
@@ -231,8 +235,8 @@ public class WheelData {
         private String name;
         private WheelData leftWheel;
         private WheelData rightWheel;
-        private JTextField xField, yField, zField, widthField, heightField, modelField;
-        
+        private JTextField xField, yField, zField, widthField, heightField, modelField, gwgrField;
+
         public AxleRow(String name, WheelData leftWheel, WheelData rightWheel) {
             this.name = name;
             this.leftWheel = leftWheel;
@@ -254,13 +258,15 @@ public class WheelData {
             widthField = createField(leftWheel.width, 60);
             heightField = createField(leftWheel.height, 60);
             modelField = createField(leftWheel.modelId, 60);
-            
+            gwgrField = createField(leftWheel.gwgr, 50);
+    
             add(xField);
             add(yField);
             add(zField);
             add(widthField);
             add(heightField);
             add(modelField);
+            add(gwgrField);
         }
         
         private JTextField createField(int value, int width) {
@@ -278,6 +284,7 @@ public class WheelData {
                 int width = Integer.parseInt(widthField.getText());  // Remove Math.abs()
                 int height = Integer.parseInt(heightField.getText());
                 int modelId = Integer.parseInt(modelField.getText());
+                int gwgr = Integer.parseInt(gwgrField.getText());
                 
                 // Update the wheel data
                 leftWheel.x = -x;
@@ -286,6 +293,7 @@ public class WheelData {
                 leftWheel.width = width;  // Keep as-is
                 leftWheel.height = height;
                 leftWheel.modelId = modelId;
+                leftWheel.gwgr = gwgr;
                 
                 rightWheel.x = x;
                 rightWheel.y = y;
@@ -293,6 +301,7 @@ public class WheelData {
                 rightWheel.width = width;  // Keep as-is
                 rightWheel.height = height;
                 rightWheel.modelId = modelId;
+                rightWheel.gwgr = gwgr;
                 
             } catch (NumberFormatException e) {
                 JOptionPane.showMessageDialog(this, 

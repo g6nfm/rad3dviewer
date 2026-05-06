@@ -63,6 +63,7 @@ public class ContO {
         public int size;
         public int modelId;
         public boolean custom;
+        public int gwgr;
 
         public int startIndex;   // first poly index for this wheel
         public int polyCount;    // how many polys this wheel uses
@@ -99,14 +100,15 @@ public class ContO {
         Map<Integer, List<TempPoly>> wheelModels = new HashMap<>();
 
         private void makeCustomWheel(
-        int nplStart,
-        int wxv, int wyv, int wzv,
-        int rotates,
-        List<TempPoly> model,
-        int wheelIndex,
-        int width,
-        int size
-) {
+            int nplStart,
+            int wxv, int wyv, int wzv,
+            int rotates,
+            List<TempPoly> model,
+            int wheelIndex,
+            int width,
+            int size,
+            int gwgr    // ADD THIS
+        ){
     //boolean mirror = (wheelIndex % 2 == 1);
 
     for (TempPoly poly : model) {
@@ -148,13 +150,16 @@ public class ContO {
         int px = (wheelIndex <= 1) ? wxv : 0;   // <= front wheels
         int pr = (wheelIndex <= 1) ? rotates : 0;
 
+        int finalGr = poly.gr + gwgr;
+        finalGr = Math.max(-40, Math.min(40, finalGr));
+
         p[nplStart] = new Plane(
             m,
             ox, oz, oy,
             poly.n,
             col,
             false,
-            poly.gr,
+            finalGr,
             poly.fs,
             px, wyv, wzv,   // pivot X *controls* rotation
             disline,
@@ -192,8 +197,10 @@ public class ContO {
         boolean tmpNoOutline = false;
         int tmpGr = 1, tmpFs = 0;
 
+        int[] fsAuto = new int[2000];
+        boolean hasWheels = false;
+        int roofat = 0;
         
-
         boolean flag = false;
         boolean flag1 = false;
         int nverts = 0;
@@ -363,6 +370,7 @@ public class ContO {
                     }
                     if (line.startsWith("fs")) {
                         fs = Utility.getint("fs", line, 0);
+                        fsAuto[npl] = 2; // mark as explicitly set
                     }
                     if (line.startsWith("c(")) {
                         glass = false;
@@ -424,17 +432,16 @@ public class ContO {
                     }
                 }
                 if (line.startsWith("</p>")) {
-                    // just a normal body polygon
-                    p[npl++] = new Plane(m, ox, oz, oy, nverts, pcolor,
+                    p[npl] = new Plane(m, ox, oz, oy, nverts, pcolor,
                             glass, gr, fs, 0, 0, 0, disline, 0, road, light, noOutline);
-
+                    if (fsAuto[npl] != 2) { fsAuto[npl] = 1; }
+                    npl++;
                     if (!glass) {
                         original.add(pendingOrigColor);
                         skin1.add(pendingSkin1Color);
                         skin2.add(pendingSkin2Color);
                         skin3.add(pendingSkin3Color);
                     }
-
                     flag = false;
                     continue;
                 }
@@ -554,6 +561,8 @@ public class ContO {
                         }
                     }
 
+                    hasWheels = true;
+
                     // Optional custom wheel model
                     List<TempPoly> model = wheelModels.get(modelID);
 
@@ -572,7 +581,7 @@ public class ContO {
                         isCustomWheel[j] = true;
                         wa.custom = true;
 
-                        makeCustomWheel(npl, wxv, wyv, wzv, rotates, model, j, width, size);
+                        makeCustomWheel(npl, wxv, wyv, wzv, rotates, model, j, width, size, gwgr);
                         polyCount = model.size();
                         npl += polyCount;
 
@@ -619,6 +628,143 @@ public class ContO {
                 }
                 if (line.startsWith("ScaleZ")) {
                     nfmm_scale[2] = Utility.getint("ScaleZ", line, 0) / 100F;
+                }
+            }
+            if (hasWheels) {
+                boolean autoFsFound = false;
+                for (int i27 = 0; i27 < npl; i27++) {
+                    int i28 = 0;
+                    int i29 = p[i27].ox[0]; int i30 = p[i27].ox[0];
+                    int i31 = p[i27].oy[0]; int i32 = p[i27].oy[0];
+                    int i33 = p[i27].oz[0]; int i34 = p[i27].oz[0];
+                    for (int i35 = 0; i35 < p[i27].n; i35++) {
+                        if (p[i27].ox[i35] > i29) { i29 = p[i27].ox[i35]; }
+                        if (p[i27].ox[i35] < i30) { i30 = p[i27].ox[i35]; }
+                        if (p[i27].oy[i35] > i31) { i31 = p[i27].oy[i35]; }
+                        if (p[i27].oy[i35] < i32) { i32 = p[i27].oy[i35]; }
+                        if (p[i27].oz[i35] > i33) { i33 = p[i27].oz[i35]; }
+                        if (p[i27].oz[i35] < i34) { i34 = p[i27].oz[i35]; }
+                    }
+                    if (Math.abs(i29-i30) <= Math.abs(i31-i32) && Math.abs(i29-i30) <= Math.abs(i33-i34)) { i28 = 1; }
+                    if (Math.abs(i31-i32) <= Math.abs(i29-i30) && Math.abs(i31-i32) <= Math.abs(i33-i34)) { i28 = 2; }
+                    if (Math.abs(i33-i34) <= Math.abs(i29-i30) && Math.abs(i33-i34) <= Math.abs(i31-i32)) { i28 = 3; }
+                    if (i28 == 2 && (!autoFsFound || (i31+i32)/2 < roofat)) {
+                        roofat = (i31+i32)/2; autoFsFound = true;
+                    }
+                    if (fsAuto[i27] == 1) {
+                        int i36 = 1000; int i37 = 0;
+                        for (int i38 = 0; i38 < p[i27].n; i38++) {
+                            int i39 = i38+1; if (i39 >= p[i27].n) { i39 -= p[i27].n; }
+                            int i40 = i38+2; if (i40 >= p[i27].n) { i40 -= p[i27].n; }
+                            if (i28 == 1) {
+                                int i41 = Math.abs((int)(Math.atan((double)(p[i27].oz[i38]-p[i27].oz[i39])/(double)(p[i27].oy[i38]-p[i27].oy[i39]))/0.017453292519943295));
+                                int i42 = Math.abs((int)(Math.atan((double)(p[i27].oz[i40]-p[i27].oz[i39])/(double)(p[i27].oy[i40]-p[i27].oy[i39]))/0.017453292519943295));
+                                if (i41 > 45) { i41 = 90-i41; } else { i42 = 90-i42; }
+                                if (i41+i42 < i36) { i36 = i41+i42; i37 = i38; }
+                            }
+                            if (i28 == 2) {
+                                int i43 = Math.abs((int)(Math.atan((double)(p[i27].oz[i38]-p[i27].oz[i39])/(double)(p[i27].ox[i38]-p[i27].ox[i39]))/0.017453292519943295));
+                                int i44 = Math.abs((int)(Math.atan((double)(p[i27].oz[i40]-p[i27].oz[i39])/(double)(p[i27].ox[i40]-p[i27].ox[i39]))/0.017453292519943295));
+                                if (i43 > 45) { i43 = 90-i43; } else { i44 = 90-i44; }
+                                if (i43+i44 < i36) { i36 = i43+i44; i37 = i38; }
+                            }
+                            if (i28 == 3) {
+                                int i45 = Math.abs((int)(Math.atan((double)(p[i27].oy[i38]-p[i27].oy[i39])/(double)(p[i27].ox[i38]-p[i27].ox[i39]))/0.017453292519943295));
+                                int i46 = Math.abs((int)(Math.atan((double)(p[i27].oy[i40]-p[i27].oy[i39])/(double)(p[i27].ox[i40]-p[i27].ox[i39]))/0.017453292519943295));
+                                if (i45 > 45) { i45 = 90-i45; } else { i46 = 90-i46; }
+                                if (i45+i46 < i36) { i36 = i45+i46; i37 = i38; }
+                            }
+                        }
+                        if (i37 != 0) {
+                            int[] tmpX = new int[p[i27].n]; int[] tmpY = new int[p[i27].n]; int[] tmpZ = new int[p[i27].n];
+                            for (int i50 = 0; i50 < p[i27].n; i50++) { tmpX[i50]=p[i27].ox[i50]; tmpY[i50]=p[i27].oy[i50]; tmpZ[i50]=p[i27].oz[i50]; }
+                            for (int i51 = 0; i51 < p[i27].n; i51++) {
+                                int i52 = i51+i37; if (i52 >= p[i27].n) { i52 -= p[i27].n; }
+                                p[i27].ox[i51]=tmpX[i52]; p[i27].oy[i51]=tmpY[i52]; p[i27].oz[i51]=tmpZ[i52];
+                            }
+                        }
+                        if (i28 == 1) {
+                            if (Math.abs(p[i27].oz[0]-p[i27].oz[1]) > Math.abs(p[i27].oy[0]-p[i27].oy[1])) {
+                                p[i27].fs = (p[i27].oz[0] > p[i27].oz[1]) ? ((p[i27].oy[1] > p[i27].oy[2]) ? 1 : -1) : ((p[i27].oy[1] > p[i27].oy[2]) ? -1 : 1);
+                            } else {
+                                p[i27].fs = (p[i27].oy[0] > p[i27].oy[1]) ? ((p[i27].oz[1] > p[i27].oz[2]) ? -1 : 1) : ((p[i27].oz[1] > p[i27].oz[2]) ? 1 : -1);
+                            }
+                        }
+                        if (i28 == 2) {
+                            if (Math.abs(p[i27].oz[0]-p[i27].oz[1]) > Math.abs(p[i27].ox[0]-p[i27].ox[1])) {
+                                p[i27].fs = (p[i27].oz[0] > p[i27].oz[1]) ? ((p[i27].ox[1] > p[i27].ox[2]) ? -1 : 1) : ((p[i27].ox[1] > p[i27].ox[2]) ? 1 : -1);
+                            } else {
+                                p[i27].fs = (p[i27].ox[0] > p[i27].ox[1]) ? ((p[i27].oz[1] > p[i27].oz[2]) ? 1 : -1) : ((p[i27].oz[1] > p[i27].oz[2]) ? -1 : 1);
+                            }
+                        }
+                        if (i28 == 3) {
+                            if (Math.abs(p[i27].oy[0]-p[i27].oy[1]) > Math.abs(p[i27].ox[0]-p[i27].ox[1])) {
+                                p[i27].fs = (p[i27].oy[0] > p[i27].oy[1]) ? ((p[i27].ox[1] > p[i27].ox[2]) ? 1 : -1) : ((p[i27].ox[1] > p[i27].ox[2]) ? -1 : 1);
+                            } else {
+                                p[i27].fs = (p[i27].ox[0] > p[i27].ox[1]) ? ((p[i27].oy[1] > p[i27].oy[2]) ? -1 : 1) : ((p[i27].oy[1] > p[i27].oy[2]) ? 1 : -1);
+                            }
+                        }
+                        boolean bool53 = false; boolean bool54 = false;
+                        for (int i55 = 0; i55 < npl; i55++) {
+                            if (i55 != i27 && fsAuto[i55] != 0) {
+                                int i57=p[i55].ox[0],i58=p[i55].ox[0],i59=p[i55].oy[0],i60=p[i55].oy[0],i61=p[i55].oz[0],i62=p[i55].oz[0];
+                                for (int i63=0; i63<p[i55].n; i63++) {
+                                    if (p[i55].ox[i63]>i57) i57=p[i55].ox[i63]; if (p[i55].ox[i63]<i58) i58=p[i55].ox[i63];
+                                    if (p[i55].oy[i63]>i59) i59=p[i55].oy[i63]; if (p[i55].oy[i63]<i60) i60=p[i55].oy[i63];
+                                    if (p[i55].oz[i63]>i61) i61=p[i55].oz[i63]; if (p[i55].oz[i63]<i62) i62=p[i55].oz[i63];
+                                }
+                                int i64=(i57+i58)/2, i65=(i59+i60)/2, i66=(i61+i62)/2;
+                                int i67=(i29+i30)/2, i68=(i31+i32)/2, i69=(i33+i34)/2;
+                                if (i28==1 && (i65<=i31&&i65>=i32&&i66<=i33&&i66>=i34 || i68<=i59&&i68>=i60&&i69<=i61&&i69>=i62)) {
+                                    if (i57<i30) bool53=true; if (i58>i29) bool54=true;
+                                }
+                                if (i28==2 && (i64<=i29&&i64>=i30&&i66<=i33&&i66>=i34 || i67<=i57&&i67>=i58&&i69<=i61&&i69>=i62)) {
+                                    if (i59<i32) bool53=true; if (i60>i31) bool54=true;
+                                }
+                                if (i28==3 && (i64<=i29&&i64>=i30&&i65<=i31&&i65>=i32 || i67<=i57&&i67>=i58&&i68<=i59&&i68>=i60)) {
+                                    if (i61<i34) bool53=true; if (i62>i33) bool54=true;
+                                }
+                            }
+                            if (bool53 && bool54) break;
+                        }
+                        boolean bool70 = false;
+                        if (bool53 && !bool54) { bool70=true; }
+                        if (bool54 && !bool53) { p[i27].fs*=-1; bool70=true; }
+                        if (bool53 && bool54) { p[i27].fs=0; p[i27].gr=40; bool70=true; }
+                        if (!bool70) {
+                            int i71=0, i72=0;
+                            if (i28==1) { i71=(i29+i30)/2; i72=i71; }
+                            if (i28==2) { i71=(i31+i32)/2; i72=i71; }
+                            if (i28==3) { i71=(i33+i34)/2; i72=i71; }
+                            for (int i73=0; i73<npl; i73++) {
+                                if (i73!=i27) {
+                                    boolean bool74=false;
+                                    boolean[] bools=new boolean[p[i73].n];
+                                    for (int i75=0; i75<p[i73].n; i75++) {
+                                        bools[i75]=false;
+                                        for (int i76=0; i76<p[i27].n; i76++) {
+                                            if (p[i27].ox[i76]==p[i73].ox[i75]&&p[i27].oy[i76]==p[i73].oy[i75]&&p[i27].oz[i76]==p[i73].oz[i75]) {
+                                                bools[i75]=true; bool74=true;
+                                            }
+                                        }
+                                    }
+                                    if (bool74) {
+                                        for (int i77=0; i77<p[i73].n; i77++) {
+                                            if (!bools[i77]) {
+                                                if (i28==1) { if (p[i73].ox[i77]>i71) i71=p[i73].ox[i77]; if (p[i73].ox[i77]<i72) i72=p[i73].ox[i77]; }
+                                                if (i28==2) { if (p[i73].oy[i77]>i71) i71=p[i73].oy[i77]; if (p[i73].oy[i77]<i72) i72=p[i73].oy[i77]; }
+                                                if (i28==3) { if (p[i73].oz[i77]>i71) i71=p[i73].oz[i77]; if (p[i73].oz[i77]<i72) i72=p[i73].oz[i77]; }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if (i28==1) { if ((i71+i72)/2>(i29+i30)/2) p[i27].fs*=-1; else if ((i71+i72)/2==(i29+i30)/2&&(i29+i30)/2<0) p[i27].fs*=-1; }
+                            if (i28==2) { if ((i71+i72)/2>(i31+i32)/2) p[i27].fs*=-1; else if ((i71+i72)/2==(i31+i32)/2&&(i31+i32)/2<0) p[i27].fs*=-1; }
+                            if (i28==3) { if ((i71+i72)/2>(i33+i34)/2) p[i27].fs*=-1; else if ((i71+i72)/2==(i33+i34)/2&&(i33+i34)/2<0) p[i27].fs*=-1; }
+                        }
+                        p[i27].deltafntyp();
+                    }
                 }
             }
         } catch (IOException e) {
@@ -697,7 +843,8 @@ public class ContO {
                 model,
                 w,
                 newWidth,
-                newSize
+                newSize,
+                wa.gwgr
             );
 
             car.npl += newCount;
@@ -905,6 +1052,15 @@ public class ContO {
             int j1 = Medium.cy + (int) ((y - Medium.y - Medium.cy) * RadicalMath.cos(Medium.zy) - (j - Medium.cz) * RadicalMath.sin(Medium.zy));
             if (Utility.cYs(j1 + maxR, k) > 0 && Utility.cYs(j1 - maxR, k) < Medium.h) {
                 
+                // Pre-pass: compute av for all polygons before sorting
+                for (int pi = 0; pi < npl; pi++) {
+                    int i13 = p[pi].gr;
+                    if (i13 < 0 && i13 >= -17) i13 = 0;
+                    if (p[pi].gr == -11) i13 = -90;
+                    if (p[pi].gr == -14 || p[pi].gr == -15) i13 = -50;
+                    if (p[pi].gr == -16) i13 = 35;
+                    p[pi].computeAv(x - Medium.x, y - Medium.y, z - Medium.z, xz, xy, zy, i13);
+                }
                 
                 int ai[] = new int[npl];
                 int ai1[] = new int[npl];

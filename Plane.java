@@ -50,6 +50,74 @@ public class Plane {
     public Color hoverColor    = new Color(0, 0, 255, 60);
     public Color selectedColor = new Color(0, 80, 255, 80);
 
+    public void deltafntyp() {
+        final int dX = Math.abs(ox[2] - ox[1]);
+        final int dY = Math.abs(oy[2] - oy[1]);
+        final int dZ = Math.abs(oz[2] - oz[1]);
+        if (dY <= dX && dY <= dZ) { typ = 2; }
+        if (dX <= dY && dX <= dZ) { typ = 1; }
+        if (dZ <= dX && dZ <= dY) { typ = 3; }
+        deltaf = 1.0F;
+        for (int a = 0; a < 3; a++) {
+            for (int b = 0; b < 3; b++) {
+                if (b != a) {
+                    deltaf *= (float)(Math.sqrt(
+                        (ox[b]-ox[a])*(ox[b]-ox[a]) +
+                        (oy[b]-oy[a])*(oy[b]-oy[a]) +
+                        (oz[b]-oz[a])*(oz[b]-oz[a])) / 100D);
+                }
+            }
+        }
+        deltaf = deltaf / 3F;
+    }
+
+    public void computeAv(int i, int j, int k, int l, int i1, int j1, int i13) {
+        int[] ai  = new int[n];
+        int[] ai2 = new int[n];
+        int[] ai1 = new int[n];
+
+        for (int j2 = 0; j2 < n; j2++) {
+            ai[j2]  = ox[j2] + i;
+            ai2[j2] = oy[j2] + j;
+            ai1[j2] = oz[j2] + k;
+        }
+
+        Utility.rot(ai, ai2, i, j, i1, n);
+        Utility.rot(ai2, ai1, j, k, j1, n);
+        Utility.rot(ai, ai1, i, k, l, n);
+        Utility.rot(ai, ai1, Medium.cx, Medium.cz, Medium.xz, n);
+        Utility.rot(ai2, ai1, Medium.cy, Medium.cz, Medium.zy, n);
+
+        int j14 = 0, k15 = 0, k16 = 0, l16 = 0, i17 = 0, j17 = 0;
+        for (int k17 = 0; k17 < n; k17++) {
+            int i18 = 0, k18 = 0, i19 = 0, j19 = 0, k19 = 0, l19 = 0;
+            for (int i20 = 0; i20 < n; i20++) {
+                if (ai2[k17] >= ai2[i20]) i18++;
+                if (ai2[k17] <= ai2[i20]) k18++;
+                if (ai[k17]  >= ai[i20])  i19++;
+                if (ai[k17]  <= ai[i20])  j19++;
+                if (ai1[k17] >= ai1[i20]) k19++;
+                if (ai1[k17] <= ai1[i20]) l19++;
+            }
+            if (i18 == n) j14 = ai2[k17];
+            if (k18 == n) k15 = ai2[k17];
+            if (i19 == n) k16 = ai[k17];
+            if (j19 == n) l16 = ai[k17];
+            if (k19 == n) i17 = ai1[k17];
+            if (l19 == n) j17 = ai1[k17];
+        }
+
+        int l17 = (j14 + k15) / 2;
+        int j18 = (k16 + l16) / 2;
+        int l18 = (i17 + j17) / 2;
+        av = (int) Math.sqrt(
+            (Medium.cy - l17) * (Medium.cy - l17) +
+            (Medium.cx - j18) * (Medium.cx - j18) +
+            l18 * l18 +
+            i13 * i13 * i13
+        );
+    }
+
     public void loadprojf() {
         projf = 1.0F;
         int i = 0;
@@ -867,6 +935,7 @@ public class Plane {
         Utility.rot(ai, ai2, i, j, i1, n);
         Utility.rot(ai2, ai1, j, k, j1, n);
         Utility.rot(ai, ai1, i, k, l, n);
+        // Use 3D distances like deltaf does, for consistent f1 ratio
         if (i1 != 0 || j1 != 0 || l != 0) {
             projf = 1.0F;
             int j3 = 0;
@@ -874,9 +943,11 @@ public class Plane {
                 int l3 = 0;
                 do {
                     if (l3 != j3) {
-                        projf *= (float) (Math
-                                .sqrt((ai[j3] - ai[l3]) * (ai[j3] - ai[l3]) + (ai1[j3] - ai1[l3]) * (ai1[j3] - ai1[l3]))
-                                / 100D);
+                        projf *= (float) (Math.sqrt(
+                            (ai[j3] - ai[l3]) * (ai[j3] - ai[l3]) +
+                            (ai2[j3] - ai2[l3]) * (ai2[j3] - ai2[l3]) +
+                            (ai1[j3] - ai1[l3]) * (ai1[j3] - ai1[l3])
+                        ) / 100D);
                     }
                 } while (++l3 < 3);
             } while (++j3 < 3);
@@ -909,21 +980,6 @@ public class Plane {
             int k6 = k5;
             k5 = i6;
             i6 = k6;
-        }
-        if (Utility.spy(ai[k5], ai1[k5]) > Utility.spy(ai[i6], ai1[i6])) {
-            flag1 = true;
-            int l6 = 0;
-            for (int k7 = 0; k7 < n; k7++) {
-                if (ai1[k7] < 50 && ai2[k7] > Medium.cy) {
-                    flag1 = false;
-                } else if (ai2[k7] == ai2[0]) {
-                    l6++;
-                }
-            }
-
-            if (l6 == n && ai2[0] > Medium.cy) {
-                flag1 = false;
-            }
         }
         Utility.rot(ai2, ai1, Medium.cy, Medium.cz, Medium.zy, n);
         boolean flag2 = true;
@@ -1103,9 +1159,11 @@ public class Plane {
             if (i11 == -111 && av > 1500) {
                 flag = true;
             }
+            /* 
             if (av > 3000 && Medium.adv <= 900) {
                 flag = true;
             }
+            */
             if (gr == -12 && av < 11200) {
                 Medium.lastmaf = i11;
             }
@@ -1120,7 +1178,7 @@ public class Plane {
             }
         }
         if (flag2) {
-            float f1 = (float) (projf / deltaf + 0.29999999999999999D);
+            float f1 = (float)(projf / deltaf + 0.29999999999999999D);
             if (flag && !noOutline) {
                 boolean flag3 = false;
                 if (f1 > 1.0F) {
@@ -1142,9 +1200,6 @@ public class Plane {
                 }
                 if (gr == -4) {
                     f1 = 0.74F;
-                }
-                if (gr != -7 && flag1) {
-                    f1 = 0.32F;
                 }
                 if (gr == -8 || gr == -14 || gr == -15) {
                     f1 = 1.0F;
@@ -1176,7 +1231,7 @@ public class Plane {
                 if (f1 > 1.0F) {
                     f1 = 1.0F;
                 }
-                if (f1 < 0.59999999999999998D || flag1) {
+                if (f1 < 0.59999999999999998D) {
                     f1 = 0.6F;
                 }
             }
