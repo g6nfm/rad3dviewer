@@ -1231,15 +1231,11 @@ public class Plane {
             
             // Add red transparent overlay if hovered (glass)
             if (isHovered) {
-<<<<<<< Updated upstream
-                rd.setColor(new Color(0, 0, 255, 120));
-=======
                 rd.setColor(hoverColor);
                 rd.fillPolygon(ai14, ai15, n);
             }
             if (isSelected && !isHovered) {
                 rd.setColor(selectedColor);
->>>>>>> Stashed changes
                 rd.fillPolygon(ai14, ai15, n);
             }
             
@@ -1254,21 +1250,11 @@ public class Plane {
             
             // Add red transparent overlay if hovered (non-glass)
             if (isHovered) {
-<<<<<<< Updated upstream
-                rd.setColor(new Color(0, 0, 255, 120));
-                rd.fillPolygon(ai14, ai15, n);
-            }
-            
-            // Add yellow transparent overlay if selected (non-glass)
-            if (isSelected && !isHovered) {
-                rd.setColor(new Color(255, 0, 0, 100));
-=======
                 rd.setColor(hoverColor);
                 rd.fillPolygon(ai14, ai15, n);
             }
             if (isSelected && !isHovered) {
                 rd.setColor(selectedColor);
->>>>>>> Stashed changes
                 rd.fillPolygon(ai14, ai15, n);
             }
         }

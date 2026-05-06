@@ -55,8 +55,6 @@ public class StageMakerPanel extends JPanel {
 
     
 
-    
-
     private int[]  snapV    = {0,0,0};
     private int[]  skyV     = {217,251,207};
     private int[]  fogV     = {200,204,153};
@@ -89,9 +87,6 @@ public class StageMakerPanel extends JPanel {
     private int     aiOrderCounter = 0; // next order number to assign
     private final Set<PlacedPart> aiTaggedParts = new HashSet<>();
     private JPanel aiTagToolbar = null;
-    private JPanel statusBar    = null;
-    private JLabel statusCoords = null;
-    private JLabel statusHint   = null;
 
 
     private PlacedPart selectedPart = null;
@@ -160,12 +155,9 @@ public class StageMakerPanel extends JPanel {
                 for (Component c : getComponents()) {
                     if (c == canvasWrapper) {
                         c.setBounds(0, 0, getWidth(), getHeight());
-                    } else if (c == aiTagToolbar) {
+                    } else {
                         int h = c.getPreferredSize().height;
                         c.setBounds(0, 40, getWidth(), h);
-                    } else if (c == statusBar) {
-                        int h = c.getPreferredSize().height + 10;
-                        c.setBounds(0, getHeight() - h - 40, getWidth(), h);
                     }
                 }
             }
@@ -173,26 +165,6 @@ public class StageMakerPanel extends JPanel {
         layered.add(canvasWrapper, JLayeredPane.DEFAULT_LAYER);
         layered.add(aiTagToolbar,  JLayeredPane.PALETTE_LAYER);
         buildPanel.add(layered, BorderLayout.CENTER);
-
-        statusBar = new JPanel();
-        statusBar.setLayout(new BoxLayout(statusBar, BoxLayout.Y_AXIS));
-        statusBar.setOpaque(false);
-        statusBar.setVisible(false);
-
-        statusCoords = new JLabel("", SwingConstants.CENTER);
-        statusCoords.setFont(new Font("Arial", Font.PLAIN, 11));
-        statusCoords.setForeground(Color.DARK_GRAY);
-        statusCoords.setAlignmentX(CENTER_ALIGNMENT);
-
-        statusHint = new JLabel("Press [Left Click] to place, or right-click a piece to edit", SwingConstants.CENTER);
-        statusHint.setFont(new Font("Arial", Font.BOLD, 11));
-        statusHint.setForeground(Color.DARK_GRAY);
-        statusHint.setAlignmentX(CENTER_ALIGNMENT);
-
-        statusBar.add(statusCoords);
-        statusBar.add(statusHint);
-
-        layered.add(statusBar, JLayeredPane.PALETTE_LAYER);
 
         mainCards = new CardLayout();
         mainCardPanel = new JPanel(mainCards);
@@ -216,19 +188,6 @@ public class StageMakerPanel extends JPanel {
         am.put("scrollDown",  new AbstractAction(){ public void actionPerformed(ActionEvent e){ camZ -= 300; stageCanvas.repaint(); }});
         am.put("scrollLeft",  new AbstractAction(){ public void actionPerformed(ActionEvent e){ camX -= 300; stageCanvas.repaint(); }});
         am.put("scrollRight", new AbstractAction(){ public void actionPerformed(ActionEvent e){ camX += 300; stageCanvas.repaint(); }});
-    }
-
-    private Color aiTagColor(PlacedPart pp) {
-        if (pp.type == 1) return new Color(20, 160, 160);   // Chk - teal
-        if (pp.aiTag == null || pp.aiTag.isEmpty()) return new Color(100, 100, 110); // None - grey
-        switch (pp.aiTag) {
-            case "p":  return new Color(40, 140, 40);   // green
-            case "pt": return new Color(40, 100, 200);  // blue
-            case "pr": return new Color(180, 120, 20);  // orange
-            case "ph": return new Color(140, 40, 160);  // purple
-            case "po": return new Color(180, 60, 60);   // red
-            default:   return new Color(100, 100, 110);
-        }
     }
 
     private JPanel buildTopBar() {
@@ -1333,24 +1292,22 @@ public class StageMakerPanel extends JPanel {
                         if (target != null) {
                             showPartContextMenu(target, e.getX(), e.getY());
                         }
-                    } else if (SwingUtilities.isLeftMouseButton(e)) {
+                    } else if (aiTagMode && SwingUtilities.isLeftMouseButton(e)) {
                         int wx = stw(e.getX(), getWidth());
                         int wz = stz(e.getY(), getHeight());
-                        if (aiTagMode) {
-                            PlacedPart target = findNearestPart(wx, wz);
-                            if (target != null) {
-                                if (target.type == 1) {
-                                    target.aiTag = "";
-                                } else {
-                                    target.aiTag = activeAiTag;
-                                }
-                                target.aiOrder = aiOrderCounter++;
-                                aiTaggedParts.add(target);
+                        PlacedPart target = findNearestPart(wx, wz);
+                        if (target != null) {
+                            if (target.type == 1) {
+                                // checkpoints just get ordered, no tag
+                                target.aiTag = "";
+                            } else {
+                                target.aiTag = activeAiTag;
                             }
-                            repaint();
-                        } else {
-                            placePart(wx, wz);
+                            target.aiOrder = aiOrderCounter++;
+                            aiTaggedParts.add(target);
                         }
+                        repaint();
+                        return;
                     }
                 }
                 @Override public void mouseReleased(MouseEvent e) { panning=false; }
@@ -1365,13 +1322,8 @@ public class StageMakerPanel extends JPanel {
                     ghostZ = snapped[1];
                     hoveredPart = findNearestPart(wx, wz);
                     showGhost = true;
-                    if (statusBar != null) {
-                        statusCoords.setText("X: " + ghostX + "     Y: 0     Z: " + ghostZ);
-                        statusBar.setVisible(true);
-                    }
                     repaint();
                 }
-
                 @Override public void mouseDragged(MouseEvent e) {
                     if (panning) {
                         camX = dragCX - (e.getX() - dragSX);
@@ -1384,10 +1336,6 @@ public class StageMakerPanel extends JPanel {
                         ghostZ = snapped[1];
                         hoveredPart = findNearestPart(wx, wz);
                         showGhost = true;
-                    }
-                    if (statusBar != null) {
-                        statusCoords.setText("X: " + ghostX + "     Y: 0     Z: " + ghostZ);
-                        statusBar.setVisible(true);
                     }
                     repaint();
                 }
@@ -1478,17 +1426,10 @@ public class StageMakerPanel extends JPanel {
                 } else if (aiTagMode && aiTaggedParts.contains(pp)) {
                     Set<Integer> allPolys = new HashSet<>();
                     for (int i = 0; i < pp.conto.npl; i++) allPolys.add(i);
-                    Color tc = aiTagColor(pp);
-                    pp.conto.hoverColor    = new Color(tc.getRed(), tc.getGreen(), tc.getBlue(), 60);
-                    pp.conto.selectedColor = new Color(tc.getRed(), tc.getGreen(), tc.getBlue(), 90);
                     pp.conto.wholeHover = (pp == hoveredPart);
                     pp.conto.d(g2, -1, allPolys);
                     pp.conto.wholeHover = false;
-                    pp.conto.hoverColor    = new Color(0, 0, 255, 60);
-                    pp.conto.selectedColor = new Color(0, 80, 255, 80);
                 } else {
-                    pp.conto.hoverColor    = new Color(0, 0, 255, 60);
-                    pp.conto.selectedColor = new Color(0, 80, 255, 80);
                     pp.conto.wholeHover = aiTagMode && (pp == hoveredPart);
                     pp.conto.d(g2, -1, null);
                     pp.conto.wholeHover = false;
@@ -1531,19 +1472,6 @@ public class StageMakerPanel extends JPanel {
             g2.setFont(new Font("Arial",Font.PLAIN,10));
             g2.setColor(Color.DARK_GRAY);
             g2.drawString(modelName(selectedModelIdx)+" | "+rot+"° | #"+modelFileId(selectedModelIdx), sx+8, sz-4);
-
-
-            // DEBUG: visualize ATP
-            if (ghostATP != null) {
-                int[] gx = { ghostX + ghostATP[0], ghostX + ghostATP[2] };
-                int[] gz = { ghostZ + ghostATP[1], ghostZ + ghostATP[3] };
-                rotAtp(gx, gz, ghostX, ghostZ, rot, 2);
-                g2.setColor(Color.RED);
-                g2.fillOval(wts(gx[0], w) - 5, wtz(gz[0], h) - 5, 10, 10);
-                g2.setColor(Color.BLUE);
-                g2.fillOval(wts(gx[1], w) - 5, wtz(gz[1], h) - 5, 10, 10);
-            }
-
         }
 
         private void drawArrows(Graphics2D g2, int w, int h) {

@@ -584,7 +584,7 @@ public class Rad3DViewer extends JPanel
                 repaint();
                 break;
             case KeyEvent.VK_C:
-                colorScheme = (colorScheme + 1) % 3;
+                colorScheme = (colorScheme + 1) % 4;
                 System.out.println("Color scheme set to " + colorScheme);
                 repaint();
                 break;
@@ -633,6 +633,7 @@ public class Rad3DViewer extends JPanel
                 model.original.set(colorIndex, sc);
                 model.skin1.set(colorIndex, sc);
                 model.skin2.set(colorIndex, sc);
+                model.skin3.set(colorIndex, sc);  // ADD THIS
             }
             
             // Notify parent to update the file
@@ -804,6 +805,7 @@ public class Rad3DViewer extends JPanel
             model.original.set(colorIndex, sc);
             model.skin1.set(colorIndex, sc);
             model.skin2.set(colorIndex, sc);
+            model.skin3.set(colorIndex, sc);
         }
         
         updatePolygonColorInFile(polyIndex, newColor);
@@ -947,6 +949,7 @@ public class Rad3DViewer extends JPanel
                         case 0: model.original.set(colorIndex, sc); break;
                         case 1: model.skin1.set(colorIndex, sc); break;
                         case 2: model.skin2.set(colorIndex, sc); break;
+                        case 3: model.skin3.set(colorIndex, sc); break;
                     }
                 }
 

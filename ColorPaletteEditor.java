@@ -14,6 +14,8 @@ public class ColorPaletteEditor extends JPanel {
     private Map<String, Color> uniqueColors = new LinkedHashMap<>();
     private Color selectedColor = null;
 
+    private boolean selectedColorIsRim = false;
+
     private boolean paintMode = false;
     private Color paintColor = null;
     private JButton paintModeBtn;
@@ -618,6 +620,7 @@ public class ColorPaletteEditor extends JPanel {
     }
 
     private void selectRimColor(Color color) {
+        selectedColorIsRim = true;
         selectedColor = color;
         editorPanel.setVisible(true);
         
@@ -656,6 +659,10 @@ public class ColorPaletteEditor extends JPanel {
             case 2: 
                 colorTag = "c2("; 
                 rimTag = "rims2(";
+                break;
+            case 3:
+                colorTag = "c3(";
+                rimTag = "rims3(";
                 break;
         }
         
@@ -817,7 +824,9 @@ public class ColorPaletteEditor extends JPanel {
 
     public void syncScheme(int scheme) {
         currentScheme = scheme;
-        schemeSelector.setSelectedIndex(scheme);
+        if (scheme < schemeSelector.getItemCount()) {
+            schemeSelector.setSelectedIndex(scheme);
+        }
         refreshColorGrid();
     }
     
@@ -831,6 +840,7 @@ public class ColorPaletteEditor extends JPanel {
         }
 
         // Normal color editing mode
+        selectedColorIsRim = false;
         selectedColor = color;
         editorPanel.setVisible(true);
 
@@ -878,6 +888,7 @@ public class ColorPaletteEditor extends JPanel {
     }
     
     private void saveColor() {
+        System.out.println("saveColor called, selectedColor=" + selectedColor + " currentScheme=" + currentScheme);
         if (selectedColor == null) return;
         
         Color newColor;
@@ -902,7 +913,9 @@ public class ColorPaletteEditor extends JPanel {
         }
 
         if (parent instanceof RadMergerGUI) {
-            if (isRimColor(selectedColor)) {
+            boolean rim = selectedColorIsRim;
+            System.out.println("isRimColor=" + rim);
+            if (rim) {
                 ((RadMergerGUI) parent).replaceRimColorInFile(selectedColor, newColor, currentScheme);
             } else {
                 ((RadMergerGUI) parent).replaceColorInFile(selectedColor, newColor, currentScheme);
@@ -921,11 +934,14 @@ public class ColorPaletteEditor extends JPanel {
             case 0: rimTag = "rims("; break;
             case 1: rimTag = "rims1("; break;
             case 2: rimTag = "rims2("; break;
+            case 3: rimTag = "rims3("; break;
         }
         
+        System.out.println("isRimColor checking rimTag: " + rimTag + " for color " + color);
         String[] lines = fileContent.split("\n");
         for (String line : lines) {
             if (line.trim().startsWith(rimTag)) {
+                System.out.println("Found rim line: " + line.trim());
                 Color rimColor = parseRimColor(line);
                 if (rimColor != null && colorsMatch(rimColor, color)) {
                     return true;
@@ -1273,5 +1289,19 @@ public class ColorPaletteEditor extends JPanel {
             paintStatusLabel.setText("Color set! Click polygons to paint.");
         }
         updatePaintColorPreview();
+    }
+
+    public void setAvailableSchemes(int count) {
+        String[] options = count >= 4 
+            ? new String[]{"Original", "Scheme 1", "Scheme 2", "Scheme 3"}
+            : new String[]{"Original", "Scheme 1", "Scheme 2"};
+        
+        schemeSelector.removeAllItems();
+        for (String opt : options) schemeSelector.addItem(opt);
+        
+        if (currentScheme >= count) {
+            currentScheme = 0;
+            schemeSelector.setSelectedIndex(0);
+        }
     }
 }

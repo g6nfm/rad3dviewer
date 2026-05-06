@@ -32,6 +32,8 @@ public class RadMergerGUI extends JFrame {
 
     private WheelAnchorEditor wheelAnchorEditor;
     private ColorPaletteEditor colorPaletteEditor;
+    
+    private JButton scheme3Btn;
 
     private File carsFolder = new File("cars");
 
@@ -185,12 +187,23 @@ public class RadMergerGUI extends JFrame {
             colorPaletteEditor.syncScheme(2);
         });
 
+        scheme3Btn = new JButton("Color Scheme 3");
+        scheme3Btn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        scheme3Btn.setMaximumSize(new Dimension(220, 35));
+        scheme3Btn.setVisible(false);
+        scheme3Btn.addActionListener(e -> {
+            viewer.setColorScheme(3);
+            colorPaletteEditor.syncScheme(3);
+        });
+
         colorSchemePanel.add(Box.createVerticalStrut(10));
         colorSchemePanel.add(originalBtn);
         colorSchemePanel.add(Box.createVerticalStrut(5));
         colorSchemePanel.add(scheme1Btn);
         colorSchemePanel.add(Box.createVerticalStrut(5));
         colorSchemePanel.add(scheme2Btn);
+        colorSchemePanel.add(Box.createVerticalStrut(5));
+        colorSchemePanel.add(scheme3Btn);
         colorSchemePanel.add(Box.createVerticalStrut(10));
 
         leftSide.add(Box.createVerticalStrut(20));
@@ -461,6 +474,7 @@ public class RadMergerGUI extends JFrame {
                 case 0: rimTag = "rims("; break;
                 case 1: rimTag = "rims1("; break;
                 case 2: rimTag = "rims2("; break;
+                case 3: rimTag = "rims3("; break;
             }
             
             for (String line : lines) {
@@ -553,6 +567,7 @@ public class RadMergerGUI extends JFrame {
 
             // Load into editor
             loadRadFileText(mergedFilePath);
+            detectSchemes(new String(Files.readAllBytes(Paths.get(mergedFilePath))));
             refreshDropdown();
             refreshWheelDropdown();     // wheels
             tabbedPane.setSelectedIndex(1);
@@ -639,6 +654,10 @@ public class RadMergerGUI extends JFrame {
                 viewerContainer.repaint();
 
                 loadRadFileText(mergedFilePath);
+                try {
+                    String content = new String(Files.readAllBytes(Paths.get(mergedFilePath)));
+                    detectSchemes(content);
+                } catch (Exception ex) { /* silent */ }
                 tabbedPane.setSelectedIndex(1);
 
                 statusLabel.setText("Loaded: " + f.getName());
@@ -753,9 +772,14 @@ public class RadMergerGUI extends JFrame {
             
             // Read wheel file
             String wheelContent = new String(Files.readAllBytes(wheelFile.toPath()));
+
+            int schemeCount = 1;
+            if (carContent.contains("c1(")) schemeCount = 2;
+            if (carContent.contains("c2(")) schemeCount = 3;
+            if (carContent.contains("c3(")) schemeCount = 4;
             
             // Extract wheel model from wheel file
-            String wheelModel = extractWheelModel(wheelContent);
+            String wheelModel = extractWheelModel(wheelContent, schemeCount);
             if (wheelModel == null) {
                 JOptionPane.showMessageDialog(this, "No wheel model found in selected wheel file.", "Error", JOptionPane.ERROR_MESSAGE);
                 return;
@@ -888,13 +912,10 @@ public class RadMergerGUI extends JFrame {
         return before + newWheelModel + after;
     }
 
-    private String extractWheelModel(String content) {
-        // Create wheel model and auto-generate c1() and c2() for each polygon
-        
+    private String extractWheelModel(String content, int schemeCount) {
         StringBuilder wheelModel = new StringBuilder();
         wheelModel.append("<wheelModel(0)>\n\n");
         
-        // Find all <p>...</p> blocks
         int searchStart = 0;
         boolean foundAnyPolygon = false;
         
@@ -905,17 +926,14 @@ public class RadMergerGUI extends JFrame {
             int pEnd = content.indexOf("</p>", pStart);
             if (pEnd == -1) break;
             
-            // Extract the polygon block
             String polygonBlock = content.substring(pStart, pEnd + "</p>".length());
             
-            // Convert <p> to [p] and </p> to [/p]
+            // Run addColorSchemes on it, then convert to wheel poly format
+            polygonBlock = addColorSchemes(polygonBlock, schemeCount);
+            
             polygonBlock = polygonBlock.replace("<p>", "[p]");
             polygonBlock = polygonBlock.replace("</p>", "[/p]");
             
-            // Add c1() and c2() if they don't exist
-            polygonBlock = addColorSchemesToPolygon(polygonBlock);
-            
-            // Add to wheel model
             wheelModel.append(polygonBlock).append("\n\n");
             
             foundAnyPolygon = true;
@@ -930,7 +948,6 @@ public class RadMergerGUI extends JFrame {
         
         return wheelModel.toString();
     }
-
     private int countWheels(String content) {
         int count = 0;
         String[] lines = content.split("\n");
@@ -1470,22 +1487,18 @@ public class RadMergerGUI extends JFrame {
     
 
     private void importCarCode() {
-        // Ask for car name
         String carName = JOptionPane.showInputDialog(
             this,
             "Enter name for the imported car (without .rad):",
             "Import Car Code",
             JOptionPane.PLAIN_MESSAGE
         );
-        
-        if (carName == null || carName.trim().isEmpty()) {
-            return;
-        }
-        
+
+        if (carName == null || carName.trim().isEmpty()) return;
+
         carName = carName.trim();
         File newCarFile = new File(carsFolder, carName + ".rad");
-        
-        // Check if file already exists
+
         if (newCarFile.exists()) {
             int result = JOptionPane.showConfirmDialog(
                 this,
@@ -1495,22 +1508,26 @@ public class RadMergerGUI extends JFrame {
             );
             if (result != JOptionPane.YES_OPTION) return;
         }
-        
-        // Ask if this is for NFM G6 (auto-generate color schemes)
-        int nfmG6 = JOptionPane.showConfirmDialog(
+
+        // Ask how many color schemes to generate
+        String[] schemeOptions = {"None (or exists in code)", "2 Color Schemes", "3 Color Schemes ", "4 Color Schemes"};
+        int schemeChoice = JOptionPane.showOptionDialog(
             this,
-            "Is this car for NFM G6?\n(This will auto-generate c1() and c2() color schemes for all polygons)",
-            "NFM G6 Support",
-            JOptionPane.YES_NO_OPTION
+            "How many color schemes do you want to generate?",
+            "Color Schemes",
+            JOptionPane.DEFAULT_OPTION,
+            JOptionPane.QUESTION_MESSAGE,
+            null, schemeOptions, schemeOptions[1]
         );
-        
-        boolean generateColorSchemes = (nfmG6 == JOptionPane.YES_OPTION);
-        
+
+        if (schemeChoice == JOptionPane.CLOSED_OPTION) return;
+        int schemeCount = schemeChoice + 1; // 1=none, 2=c+c1, 3=c+c1+c2, 4=c+c1+c2+c3
+
         // Show text area for pasting code
         JTextArea importArea = new JTextArea(20, 50);
         importArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
         JScrollPane scrollPane = new JScrollPane(importArea);
-        
+
         int result = JOptionPane.showConfirmDialog(
             this,
             scrollPane,
@@ -1518,67 +1535,54 @@ public class RadMergerGUI extends JFrame {
             JOptionPane.OK_CANCEL_OPTION,
             JOptionPane.PLAIN_MESSAGE
         );
-        
+
         if (result != JOptionPane.OK_OPTION) return;
-        
+
         String carCode = importArea.getText().trim();
-        
+
         if (carCode.isEmpty()) {
             JOptionPane.showMessageDialog(this, "No code was pasted!", "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
-        
-        // Process the code to add c1() and c2() if needed
-        if (generateColorSchemes) {
-            carCode = addColorSchemes(carCode);
+
+        if (schemeCount > 1) {
+            carCode = addColorSchemes(carCode, schemeCount);
         }
-        
+
         try {
             Files.write(newCarFile.toPath(), carCode.getBytes());
-            
+
             JOptionPane.showMessageDialog(
                 this,
-                "Car imported successfully: " + carName + ".rad" + 
-                (generateColorSchemes ? "\nWith color schemes auto-generated!" : ""),
+                "Car imported successfully: " + carName + ".rad" +
+                (schemeCount > 1 ? "\nWith " + schemeCount + " color schemes generated!" : ""),
                 "Success",
                 JOptionPane.INFORMATION_MESSAGE
             );
-            
-            // Refresh dropdown and select the new car
+
             refreshDropdown();
             carDropdown.setSelectedItem(carName);
-            
+
         } catch (IOException ex) {
-            JOptionPane.showMessageDialog(
-                this,
-                "Error importing car:\n" + ex.getMessage(),
-                "Error",
-                JOptionPane.ERROR_MESSAGE
-            );
+            JOptionPane.showMessageDialog(this, "Error importing car:\n" + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void importWheelCode() {
-        // Ask for wheel name
         String wheelName = JOptionPane.showInputDialog(
             this,
             "Enter name for the imported wheel (without .rad):",
             "Import Wheel Code",
             JOptionPane.PLAIN_MESSAGE
         );
-        
-        if (wheelName == null || wheelName.trim().isEmpty()) {
-            return;
-        }
-        
+
+        if (wheelName == null || wheelName.trim().isEmpty()) return;
+
         wheelName = wheelName.trim();
         File wheelsFolder = new File("wheels");
-        if (!wheelsFolder.exists()) {
-            wheelsFolder.mkdirs();
-        }
+        if (!wheelsFolder.exists()) wheelsFolder.mkdirs();
         File newWheelFile = new File(wheelsFolder, wheelName + ".rad");
-        
-        // Check if file already exists
+
         if (newWheelFile.exists()) {
             int result = JOptionPane.showConfirmDialog(
                 this,
@@ -1588,22 +1592,25 @@ public class RadMergerGUI extends JFrame {
             );
             if (result != JOptionPane.YES_OPTION) return;
         }
-        
-        // Ask if this is for NFM G6 (auto-generate color schemes)
-        int nfmG6 = JOptionPane.showConfirmDialog(
+
+        String[] schemeOptions = {"None", "2 (Original + Scheme 1)", "3 (+ Scheme 2)", "4 (+ Scheme 3)"};
+        int schemeChoice = JOptionPane.showOptionDialog(
             this,
-            "Is this wheel for NFM G6?\n(This will auto-generate c1() and c2() color schemes for all polygons)",
-            "NFM G6 Support",
-            JOptionPane.YES_NO_OPTION
+            "How many color schemes do you want to generate?",
+            "Color Schemes",
+            JOptionPane.DEFAULT_OPTION,
+            JOptionPane.QUESTION_MESSAGE,
+            null, schemeOptions, schemeOptions[1]
         );
-        
-        boolean generateColorSchemes = (nfmG6 == JOptionPane.YES_OPTION);
-        
-        // Show text area for pasting code
+
+        if (schemeChoice == JOptionPane.CLOSED_OPTION) return;
+        int schemeCount = schemeChoice + 1;
+        boolean generateColorSchemes = schemeCount > 1;
+
         JTextArea importArea = new JTextArea(20, 50);
         importArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
         JScrollPane scrollPane = new JScrollPane(importArea);
-        
+
         int result = JOptionPane.showConfirmDialog(
             this,
             scrollPane,
@@ -1611,42 +1618,35 @@ public class RadMergerGUI extends JFrame {
             JOptionPane.OK_CANCEL_OPTION,
             JOptionPane.PLAIN_MESSAGE
         );
-        
+
         if (result != JOptionPane.OK_OPTION) return;
-        
+
         String wheelCode = importArea.getText().trim();
-        
+
         if (wheelCode.isEmpty()) {
             JOptionPane.showMessageDialog(this, "No code was pasted!", "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
-        
-        // Process the code to add c1() and c2() if needed
+
         if (generateColorSchemes) {
-            wheelCode = addColorSchemes(wheelCode);
+            wheelCode = addColorSchemes(wheelCode, schemeCount);
         }
-        
+
         try {
             Files.write(newWheelFile.toPath(), wheelCode.getBytes());
-            
+
             JOptionPane.showMessageDialog(
                 this,
-                "Wheel imported successfully: " + wheelName + ".rad" + 
-                (generateColorSchemes ? "\nWith color schemes auto-generated!" : ""),
+                "Wheel imported successfully: " + wheelName + ".rad" +
+                (generateColorSchemes ? "\nWith " + schemeCount + " color schemes generated!" : ""),
                 "Success",
                 JOptionPane.INFORMATION_MESSAGE
             );
-            
-            // Refresh wheel list
+
             refreshWheelDropdown();
-            
+
         } catch (IOException ex) {
-            JOptionPane.showMessageDialog(
-                this,
-                "Error importing wheel:\n" + ex.getMessage(),
-                "Error",
-                JOptionPane.ERROR_MESSAGE
-            );
+            JOptionPane.showMessageDialog(this, "Error importing wheel:\n" + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -1988,6 +1988,7 @@ public class RadMergerGUI extends JFrame {
     }
 
     public void replaceColorInFile(Color oldColor, Color newColor, int scheme) {
+        System.out.println("replaceColorInFile called: scheme=" + scheme + " old=" + oldColor + " new=" + newColor);
         if (mergedFilePath == null) return;
         
         try {
@@ -2000,13 +2001,17 @@ public class RadMergerGUI extends JFrame {
                 case 0: colorTag = "c("; break;
                 case 1: colorTag = "c1("; break;
                 case 2: colorTag = "c2("; break;
+                case 3: colorTag = "c3("; break;
             }
+            
+            System.out.println("Looking for colorTag: " + colorTag);
             
             for (String line : lines) {
                 String trimmed = line.trim();
                 
                 if (trimmed.startsWith(colorTag)) {
                     Color lineColor = parseColorFromLine(trimmed);
+                    System.out.println("Found tag: " + trimmed + " lineColor=" + lineColor + " match=" + colorsMatch(lineColor, oldColor));
                     if (lineColor != null && colorsMatch(lineColor, oldColor)) {
                         String indent = line.substring(0, line.indexOf(colorTag.charAt(0)));
                         result.append(indent).append(String.format("%s%d,%d,%d)\n",
@@ -2106,6 +2111,7 @@ public class RadMergerGUI extends JFrame {
                 case 0: colorTag = "c("; break;
                 case 1: colorTag = "c1("; break;
                 case 2: colorTag = "c2("; break;
+                case 3: colorTag = "c3("; break;
             }
             
             int currentPoly = -1;
@@ -2258,7 +2264,45 @@ public class RadMergerGUI extends JFrame {
         compactColorEditorOverlay = null;
     }
 
+    private String addColorSchemes(String carCode, int schemeCount) {
+        String[] lines = carCode.split("\n");
+        StringBuilder result = new StringBuilder();
+        boolean inPoly = false;
+
+        for (String line : lines) {
+            String trimmed = line.trim();
+
+            if (trimmed.startsWith("<p>")) inPoly = true;
+
+            if (inPoly && trimmed.startsWith("c(") && !trimmed.startsWith("c1(")
+                    && !trimmed.startsWith("c2(") && !trimmed.startsWith("c3(")) {
+                result.append(line).append("\n");
+                String indent = line.substring(0, line.indexOf('c'));
+                if (schemeCount >= 2) result.append(indent).append(trimmed.replace("c(", "c1(")).append("\n");
+                if (schemeCount >= 3) result.append(indent).append(trimmed.replace("c(", "c2(")).append("\n");
+                if (schemeCount >= 4) result.append(indent).append(trimmed.replace("c(", "c3(")).append("\n");
+                continue;
+            }
+
+            // Skip existing scheme tags to avoid duplicates
+            if (inPoly && (trimmed.startsWith("c1(") || trimmed.startsWith("c2(") || trimmed.startsWith("c3("))) {
+                continue;
+            }
+
+            if (trimmed.startsWith("</p>")) inPoly = false;
+
+            result.append(line).append("\n");
+        }
+        return result.toString();
+    }
+
+    private void detectSchemes(String content) {
+        boolean hasScheme3 = content.contains("c3(");
+        scheme3Btn.setVisible(hasScheme3);
+        colorPaletteEditor.setAvailableSchemes(hasScheme3 ? 4 : 3);
+    }
+
     public ColorPaletteEditor getColorPaletteEditor() {
-    return colorPaletteEditor;
-}
+        return colorPaletteEditor;
+    }
 }

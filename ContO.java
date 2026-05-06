@@ -36,26 +36,24 @@ public class ContO {
     private boolean noline = false;
     public int grat = 0;
 
-<<<<<<< Updated upstream
-=======
     private int[] cachedATP = null;
     public boolean wholeHover = false;
 
     public Color hoverColor    = new Color(0, 0, 255, 60);
     public Color selectedColor = new Color(0, 80, 255, 80);
 
->>>>>>> Stashed changes
     public final int[] keyx = new int[8];
     public final int[] keyz = new int[8];
 
     boolean[] isCustomWheel = new boolean[8];
 
-    SimpleColor pendingRim0, pendingRim1, pendingRim2;
+    SimpleColor pendingRim0, pendingRim1, pendingRim2, pendingRim3;
 
     public SimpleColor[] wheelRimColorOriginal = new SimpleColor[8];
     public SimpleColor[] wheelRimColor1 = new SimpleColor[8];
     public SimpleColor[] wheelRimColor2 = new SimpleColor[8];
-    
+    public SimpleColor[] wheelRimColor3 = new SimpleColor[8];
+
     public int wheelCount = 0;
 
     public static class WheelAnchor {
@@ -82,6 +80,7 @@ public class ContO {
     ArrayList<SimpleColor> original = new ArrayList<>();
     ArrayList<SimpleColor> skin1 = new ArrayList<>();
     ArrayList<SimpleColor> skin2 = new ArrayList<>();
+    ArrayList<SimpleColor> skin3 = new ArrayList<>();
 
     HashMap<Integer, ArrayList<SimpleColor>> skinMap = new HashMap<>();
 
@@ -91,7 +90,7 @@ public class ContO {
     class TempPoly {
             int[] ox, oy, oz;
             int n;
-            SimpleColor c, c1, c2;
+            SimpleColor c, c1, c2, c3;
             boolean noOutline;
             int gr, fs;
         }
@@ -141,6 +140,7 @@ public class ContO {
         SimpleColor c  = poly.c;
         SimpleColor c1 = poly.c1;
         SimpleColor c2 = poly.c2;
+        SimpleColor c3 = poly.c3;
 
         int[] col = { c.r, c.g, c.b };
 
@@ -168,7 +168,7 @@ public class ContO {
         original.add(c);
         skin1.add(c1);
         skin2.add(c2);
-
+        skin3.add(c3);  // ADD THIS
         nplStart++;
     }
 }
@@ -188,7 +188,7 @@ public class ContO {
         int[] tmpOx = new int[100];
         int[] tmpOy = new int[100];
         int[] tmpOz = new int[100];
-        SimpleColor tmpC = null, tmpC1 = null, tmpC2 = null;
+        SimpleColor tmpC = null, tmpC1 = null, tmpC2 = null, tmpC3 = null;
         boolean tmpNoOutline = false;
         int tmpGr = 1, tmpFs = 0;
 
@@ -223,6 +223,7 @@ public class ContO {
         SimpleColor pendingOrigColor = null;
         SimpleColor pendingSkin1Color = null;
         SimpleColor pendingSkin2Color = null;
+        SimpleColor pendingSkin3Color = null;
 
         try (BufferedReader bufferedreader = new BufferedReader(
                 new InputStreamReader((new ByteArrayInputStream(abyte0))))) {
@@ -257,7 +258,7 @@ public class ContO {
                     tmpNoOutline = false;
                     tmpGr = 1;
                     tmpFs = 0;
-                    tmpC = tmpC1 = tmpC2 = null;
+                    tmpC = tmpC1 = tmpC2 = tmpC3 = null;
                     continue;
                 }
 
@@ -272,6 +273,7 @@ public class ContO {
                     poly.c = tmpC;
                     poly.c1 = tmpC1;
                     poly.c2 = tmpC2;
+                    poly.c3 = tmpC3;
                     poly.noOutline = tmpNoOutline;
                     poly.gr = tmpGr;
                     poly.fs = tmpFs;
@@ -279,6 +281,7 @@ public class ContO {
                     original.add(tmpC);
                     skin1.add(tmpC1);
                     skin2.add(tmpC2);
+                    skin3.add(tmpC3);
 
                     wheelModels.get(currentWheelModelID).add(poly);
                     continue;
@@ -311,6 +314,14 @@ public class ContO {
                             Utility.getint("c2", line, 2)
                         );
                         continue;
+                    }
+
+                    if (line.startsWith("c3(")) {
+                        tmpC3 = new SimpleColor(
+                            Utility.getint("c3", line, 0),
+                            Utility.getint("c3", line, 1),
+                            Utility.getint("c3", line, 2)
+                        );
                     }
 
                     if (line.startsWith("gr")) {
@@ -378,6 +389,14 @@ public class ContO {
                                 Utility.getint("c2", line, 2)
                         );
                     }
+                    if (line.startsWith("c3(")) {
+                        pendingSkin3Color = new SimpleColor(
+                                Utility.getint("c3", line, 0),
+                                Utility.getint("c3", line, 1),
+                                Utility.getint("c3", line, 2)
+                        );
+                    }
+                    
                     if (line.startsWith("glass")) {
                         glass = true;
                     }
@@ -413,6 +432,7 @@ public class ContO {
                         original.add(pendingOrigColor);
                         skin1.add(pendingSkin1Color);
                         skin2.add(pendingSkin2Color);
+                        skin3.add(pendingSkin3Color);
                     }
 
                     flag = false;
@@ -429,6 +449,7 @@ public class ContO {
                     // reset scheme-specific overrides for this axle
                     pendingRim1 = null;
                     pendingRim2 = null;
+                    pendingRim3 = null;
 
                     wheels.setrims(
                             Utility.getint("rims", line, 0),
@@ -458,6 +479,15 @@ public class ContO {
                     continue;
                 }
 
+                if (line.startsWith("rims3(")) {
+                    pendingRim3 = new SimpleColor(
+                            Utility.getint("rims3", line, 0),
+                            Utility.getint("rims3", line, 1),
+                            Utility.getint("rims3", line, 2)
+                    );
+                    continue;
+                }
+
 
                 if (line.startsWith("rims2(")) {
                     SimpleColor sc2 = new SimpleColor(
@@ -472,9 +502,10 @@ public class ContO {
                     continue;
                 }
 
+                
+
                 // -------- STEP 6: Wheel anchors + model instancing --------
                 if (line.startsWith("w(") && j < 8) {
-
                     int wxv = (int)(Utility.getint("w", line, 0) * div * nfmm_scale[0]);
                     int wyv = (int)(Utility.getint("w", line, 1) * div * nfmm_scale[1]);
                     int wzv = (int)(Utility.getint("w", line, 2) * div * nfmm_scale[2]);
@@ -519,6 +550,7 @@ public class ContO {
                             wheelRimColorOriginal[wheelCount] = base;
                             wheelRimColor1[wheelCount] = (pendingRim1 != null) ? pendingRim1 : base;
                             wheelRimColor2[wheelCount] = (pendingRim2 != null) ? pendingRim2 : base;
+                            wheelRimColor3[wheelCount] = (pendingRim3 != null) ? pendingRim3 : base;
                         }
                     }
 
@@ -595,11 +627,9 @@ public class ContO {
         }
 
         skinMap.put(0, original);
-        skinMap.put(1, skin1);
-
-        if(!skin2.isEmpty()){
-            skinMap.put(2, skin2);
-        }
+        skinMap.put(1, skin1.isEmpty() ? original : skin1);
+        skinMap.put(2, skin2.isEmpty() ? original : skin2);
+        skinMap.put(3, skin3.isEmpty() ? original : skin3);
 
         grat = wheels.ground;
 
@@ -733,7 +763,6 @@ public class ContO {
     }
 
     public void applySkin(int skinIndex) {
-
         ArrayList<SimpleColor> colors = skinMap.get(skinIndex);
         if (colors == null || colors.isEmpty()) return;
 
@@ -763,6 +792,7 @@ public class ContO {
             if (idx >= colors.size()) break;
 
             SimpleColor c = colors.get(idx++);
+            if (c == null) continue;
             pl.c[0] = c.r; pl.c[1] = c.g; pl.c[2] = c.b;
             pl.oc[0] = c.r; pl.oc[1] = c.g; pl.oc[2] = c.b;
 
@@ -787,6 +817,11 @@ public class ContO {
                     case 2:
                         rc = wheelRimColor2[w] != null
                                 ? wheelRimColor2[w]
+                                : wheelRimColorOriginal[w];
+                        break;
+                    case 3:
+                        rc = wheelRimColor3[w] != null
+                                ? wheelRimColor3[w]
                                 : wheelRimColorOriginal[w];
                         break;
                     default: // 0 or anything else
@@ -900,16 +935,12 @@ public class ContO {
                 }
 
                 for (int l3 = 0; l3 < npl; l3++) {
-<<<<<<< Updated upstream
-                    boolean isHovered = (ai1[l3] == hoveredPoly);
-=======
                     p[l3].hoverColor    = hoverColor;
                     p[l3].selectedColor = selectedColor;
                 }
 
                 for (int l3 = 0; l3 < npl; l3++) {
                     boolean isHovered = wholeHover || (ai1[l3] == hoveredPoly);
->>>>>>> Stashed changes
                     boolean isSelected = selectedPolygons != null && selectedPolygons.contains(ai1[l3]);  // FIX: use ai1[l3] not i
                     p[ai1[l3]].d(rd, x - Medium.x, y - Medium.y, z - Medium.z, xz, xy, zy, wxz, wzy, noline, l, isHovered, isSelected);
                 }
@@ -918,6 +949,79 @@ public class ContO {
             }
             //END RENDER MODEL
         }
+    }
+
+        public int[] getAttachPoints() {
+
+        if (cachedATP != null) return cachedATP;
+        
+        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
+        int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+
+        for (int i = 0; i < npl; i++) {
+            for (int v = 0; v < p[i].n; v++) {
+                if (p[i].ox[v] < minX) minX = p[i].ox[v];
+                if (p[i].ox[v] > maxX) maxX = p[i].ox[v];
+                if (p[i].oz[v] < minZ) minZ = p[i].oz[v];
+                if (p[i].oz[v] > maxZ) maxZ = p[i].oz[v];
+            }
+        }
+
+        int threshold = 300;
+
+        // For each extreme, collect vertices near it and measure perpendicular spread
+        // An open end has perp spread >= ~1000 (road is ~1680 wide)
+        // A closed end or side has smaller spread
+        int[] extremeVal  = { maxZ,  minZ,  maxX,  minX  };
+        boolean[] isXaxis = { false, false, true,  true   };
+
+        java.util.List<int[]> openEnds = new java.util.ArrayList<>();
+
+        for (int e = 0; e < 4; e++) {
+            int val = extremeVal[e];
+            boolean xAxis = isXaxis[e];
+            int count = 0;
+
+            for (int i = 0; i < npl; i++) {
+                for (int v = 0; v < p[i].n; v++) {
+                    int primary = xAxis ? p[i].ox[v] : p[i].oz[v];
+                    if (Math.abs(primary - val) <= threshold) {
+                        count++;
+                    }
+                }
+            }
+
+            if (count == 0) continue;
+            // Check spread by counting vertices on both sides of perp axis
+            int negCount = 0, posCount = 0;
+            for (int i = 0; i < npl; i++) {
+                for (int v = 0; v < p[i].n; v++) {
+                    int primary = xAxis ? p[i].ox[v] : p[i].oz[v];
+                    int perp    = xAxis ? p[i].oz[v] : p[i].ox[v];
+                    if (Math.abs(primary - val) <= threshold) {
+                        if (perp < 0) negCount++;
+                        else if (perp > 0) posCount++;
+                    }
+                }
+            }
+            // Open end has vertices on both sides of center
+            if (negCount > 0 && posCount > 0) {
+                int ax = xAxis ? val : 0;
+                int az = xAxis ? 0 : val;
+                openEnds.add(new int[]{ ax, az });
+            }
+        }
+
+        if (openEnds.size() >= 2) {
+            cachedATP = new int[]{ openEnds.get(0)[0], openEnds.get(0)[1],
+                                openEnds.get(1)[0], openEnds.get(1)[1] };
+            return cachedATP;
+        } else if (openEnds.size() == 1) {
+            cachedATP = new int[]{ openEnds.get(0)[0], openEnds.get(0)[1], 0, 0 };
+            return cachedATP;
+        }
+        cachedATP = new int[]{ 0, maxZ, 0, minZ };
+        return cachedATP;
     }
 
 }
